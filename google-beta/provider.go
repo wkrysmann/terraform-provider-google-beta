@@ -311,14 +311,6 @@ func Provider() terraform.ResourceProvider {
 					"GOOGLE_PUBSUB_CUSTOM_ENDPOINT",
 				}, PubsubDefaultBasePath),
 			},
-			"redis_custom_endpoint": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validateCustomEndpoint,
-				DefaultFunc: schema.MultiEnvDefaultFunc([]string{
-					"GOOGLE_REDIS_CUSTOM_ENDPOINT",
-				}, RedisDefaultBasePath),
-			},
 			"resource_manager_custom_endpoint": {
 				Type:         schema.TypeString,
 				Optional:     true,
@@ -497,9 +489,9 @@ func Provider() terraform.ResourceProvider {
 	return provider
 }
 
-// Generated resources: 103
+// Generated resources: 102
 // Generated IAM resources: 39
-// Total generated resources: 142
+// Total generated resources: 141
 func ResourceMap() map[string]*schema.Resource {
 	resourceMap, _ := ResourceMapWithErrors()
 	return resourceMap
@@ -836,7 +828,6 @@ func providerConfigure(d *schema.ResourceData, terraformVersion string) (interfa
 	config.MLEngineBasePath = d.Get("ml_engine_custom_endpoint").(string)
 	config.MonitoringBasePath = d.Get("monitoring_custom_endpoint").(string)
 	config.PubsubBasePath = d.Get("pubsub_custom_endpoint").(string)
-	config.RedisBasePath = d.Get("redis_custom_endpoint").(string)
 	config.ResourceManagerBasePath = d.Get("resource_manager_custom_endpoint").(string)
 	config.RuntimeConfigBasePath = d.Get("runtime_config_custom_endpoint").(string)
 	config.SecurityCenterBasePath = d.Get("security_center_custom_endpoint").(string)

@@ -98,7 +98,6 @@ type Config struct {
 	MLEngineBasePath             string
 	MonitoringBasePath           string
 	PubsubBasePath               string
-	RedisBasePath                string
 	ResourceManagerBasePath      string
 	RuntimeConfigBasePath        string
 	SecurityCenterBasePath       string
@@ -237,7 +236,6 @@ var LoggingDefaultBasePath = "https://logging.googleapis.com/v2/"
 var MLEngineDefaultBasePath = "https://ml.googleapis.com/v1/"
 var MonitoringDefaultBasePath = "https://monitoring.googleapis.com/v3/"
 var PubsubDefaultBasePath = "https://pubsub.googleapis.com/v1/"
-var RedisDefaultBasePath = "https://redis.googleapis.com/v1beta1/"
 var ResourceManagerDefaultBasePath = "https://cloudresourcemanager.googleapis.com/v1/"
 var RuntimeConfigDefaultBasePath = "https://runtimeconfig.googleapis.com/v1beta1/"
 var SecurityCenterDefaultBasePath = "https://securitycenter.googleapis.com/v1/"
@@ -729,7 +727,6 @@ func ConfigureBasePaths(c *Config) {
 	c.MLEngineBasePath = MLEngineDefaultBasePath
 	c.MonitoringBasePath = MonitoringDefaultBasePath
 	c.PubsubBasePath = PubsubDefaultBasePath
-	c.RedisBasePath = RedisDefaultBasePath
 	c.ResourceManagerBasePath = ResourceManagerDefaultBasePath
 	c.RuntimeConfigBasePath = RuntimeConfigDefaultBasePath
 	c.SecurityCenterBasePath = SecurityCenterDefaultBasePath
