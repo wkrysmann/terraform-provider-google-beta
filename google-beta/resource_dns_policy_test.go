@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
-func TestAccDnsPolicy_update(t *testing.T) {
+func TestAccDNSPolicy_update(t *testing.T) {
 	t.Parallel()
 
 	policySuffix := acctest.RandString(10)
@@ -16,7 +16,7 @@ func TestAccDnsPolicy_update(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckDnsPolicyDestroy,
+		CheckDestroy: testAccCheckDNSPolicyDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDnsPolicy_privateUpdate(policySuffix, "true", "172.16.1.10", "network-1"),
@@ -41,27 +41,28 @@ func TestAccDnsPolicy_update(t *testing.T) {
 func testAccDnsPolicy_privateUpdate(suffix, forwarding, nameserver, network string) string {
 	return fmt.Sprintf(`
 resource "google_dns_policy" "example-policy" {
-	name = "example-policy-%s"
-	enable_inbound_forwarding = %s
+  name                      = "example-policy-%s"
+  enable_inbound_forwarding = %s
 
-	alternative_name_server_config {
-		target_name_servers {
-			ipv4_address = "%s"
-		}
-	}
+  alternative_name_server_config {
+    target_name_servers {
+      ipv4_address = "%s"
+    }
+  }
 
-	networks {
-		network_url =  "${google_compute_network.%s.self_link}"
-	}
+  networks {
+    network_url = google_compute_network.%s.self_link
+  }
 }
 
 resource "google_compute_network" "network-1" {
-	name = "network-1-%s"
-	auto_create_subnetworks = false
+  name                    = "network-1-%s"
+  auto_create_subnetworks = false
 }
 
 resource "google_compute_network" "network-2" {
-	name = "network-2-%s"
-	auto_create_subnetworks = false
-}`, suffix, forwarding, nameserver, network, suffix, suffix)
+  name                    = "network-2-%s"
+  auto_create_subnetworks = false
+}
+`, suffix, forwarding, nameserver, network, suffix, suffix)
 }

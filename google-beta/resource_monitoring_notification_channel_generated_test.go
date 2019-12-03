@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccMonitoringNotificationChannel_notificationChannelBasicExample(t *testing.T) {
@@ -51,8 +51,8 @@ func TestAccMonitoringNotificationChannel_notificationChannelBasicExample(t *tes
 func testAccMonitoringNotificationChannel_notificationChannelBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_monitoring_notification_channel" "basic" {
-  display_name = "Test Notification Channel-%{random_suffix}"
-  type = "email"
+  display_name = "Test Notification Channel%{random_suffix}"
+  type         = "email"
   labels = {
     email_address = "fake_email@blahblah.com"
   }
@@ -71,12 +71,12 @@ func testAccCheckMonitoringNotificationChannelDestroy(s *terraform.State) error 
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://monitoring.googleapis.com/v3/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{MonitoringBasePath}}{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("MonitoringNotificationChannel still exists at %s", url)
 		}

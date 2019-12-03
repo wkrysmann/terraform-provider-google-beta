@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeBackendService_backendServiceBasicExample(t *testing.T) {
@@ -51,15 +51,113 @@ func TestAccComputeBackendService_backendServiceBasicExample(t *testing.T) {
 func testAccComputeBackendService_backendServiceBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_backend_service" "default" {
-  name          = "backend-service-%{random_suffix}"
-  health_checks = ["${google_compute_http_health_check.default.self_link}"]
+  name          = "backend-service%{random_suffix}"
+  health_checks = [google_compute_http_health_check.default.self_link]
 }
 
 resource "google_compute_http_health_check" "default" {
-  name               = "health-check-%{random_suffix}"
+  name               = "health-check%{random_suffix}"
   request_path       = "/"
   check_interval_sec = 1
   timeout_sec        = 1
+}
+`, context)
+}
+
+func TestAccComputeBackendService_backendServiceTrafficDirectorRoundRobinExample(t *testing.T) {
+	t.Parallel()
+
+	context := map[string]interface{}{
+		"random_suffix": acctest.RandString(10),
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProvidersOiCS,
+		CheckDestroy: testAccCheckComputeBackendServiceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccComputeBackendService_backendServiceTrafficDirectorRoundRobinExample(context),
+			},
+		},
+	})
+}
+
+func testAccComputeBackendService_backendServiceTrafficDirectorRoundRobinExample(context map[string]interface{}) string {
+	return Nprintf(`
+resource "google_compute_backend_service" "default" {
+  provider = google-beta
+
+  name                  = "backend-service%{random_suffix}"
+  health_checks         = [google_compute_health_check.health_check.self_link]
+  load_balancing_scheme = "INTERNAL_SELF_MANAGED"
+  locality_lb_policy    = "ROUND_ROBIN"
+}
+
+resource "google_compute_health_check" "health_check" {
+  provider = google-beta
+
+  name = "health-check%{random_suffix}"
+  http_health_check {
+    port = 80
+  }
+}
+`, context)
+}
+
+func TestAccComputeBackendService_backendServiceTrafficDirectorRingHashExample(t *testing.T) {
+	t.Parallel()
+
+	context := map[string]interface{}{
+		"random_suffix": acctest.RandString(10),
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProvidersOiCS,
+		CheckDestroy: testAccCheckComputeBackendServiceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccComputeBackendService_backendServiceTrafficDirectorRingHashExample(context),
+			},
+		},
+	})
+}
+
+func testAccComputeBackendService_backendServiceTrafficDirectorRingHashExample(context map[string]interface{}) string {
+	return Nprintf(`
+resource "google_compute_backend_service" "default" {
+  provider = google-beta
+
+  name                  = "backend-service%{random_suffix}"
+  health_checks         = [google_compute_health_check.health_check.self_link]
+  load_balancing_scheme = "INTERNAL_SELF_MANAGED"
+  locality_lb_policy    = "RING_HASH"
+  session_affinity      = "HTTP_COOKIE"
+  circuit_breakers {
+    max_connections = 10
+  }
+  consistent_hash {
+    http_cookie {
+      ttl {
+        seconds = 11
+        nanos   = 1111
+      }
+      name = "mycookie"
+    }
+  }
+  outlier_detection {
+    consecutive_errors = 2
+  }
+}
+
+resource "google_compute_health_check" "health_check" {
+  provider = google-beta
+
+  name = "health-check%{random_suffix}"
+  http_health_check {
+    port = 80
+  }
 }
 `, context)
 }
@@ -75,12 +173,12 @@ func testAccCheckComputeBackendServiceDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/backendServices/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/global/backendServices/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeBackendService still exists at %s", url)
 		}

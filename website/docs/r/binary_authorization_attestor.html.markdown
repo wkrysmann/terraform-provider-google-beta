@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Binary Authorization"
 layout: "google"
 page_title: "Google: google_binary_authorization_attestor"
 sidebar_current: "docs-google-binary-authorization-attestor"
@@ -23,8 +24,6 @@ description: |-
 
 An attestor that attests to container image artifacts.
 
-~> **Warning:** This resource is in beta, and should be used with the terraform-provider-google-beta provider.
-See [Provider Versions](https://terraform.io/docs/providers/google/provider_versions.html) for more details on beta resources.
 
 To get more information about Attestor, see:
 
@@ -32,6 +31,11 @@ To get more information about Attestor, see:
 * How-to Guides
     * [Official Documentation](https://cloud.google.com/binary-authorization/)
 
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=binary_authorization_attestor_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
 ## Example Usage - Binary Authorization Attestor Basic
 
 
@@ -39,7 +43,7 @@ To get more information about Attestor, see:
 resource "google_binary_authorization_attestor" "attestor" {
   name = "test-attestor"
   attestation_authority_note {
-    note_reference = "${google_container_analysis_note.note.name}"
+    note_reference = google_container_analysis_note.note.name
     public_keys {
       ascii_armored_pgp_public_key = <<EOF
 mQENBFtP0doBCADF+joTiXWKVuP8kJt3fgpBSjT9h8ezMfKA4aXZctYLx5wslWQl
@@ -58,6 +62,7 @@ MAU9vdm1DIv567meMqTaVZgR3w7bck2P49AO8lO5ERFpVkErtu/98y+rUy9d789l
 qoIRW6y0+UlAc+MbqfL0ziHDOAmcqz1GnROg
 =6Bvm
 EOF
+
     }
   }
 }
@@ -69,6 +74,56 @@ resource "google_container_analysis_note" "note" {
       human_readable_name = "Attestor Note"
     }
   }
+}
+```
+## Example Usage - Binary Authorization Attestor Kms
+
+
+```hcl
+resource "google_binary_authorization_attestor" "attestor" {
+  name = "test-attestor"
+  attestation_authority_note {
+    note_reference = google_container_analysis_note.note.name
+    public_keys {
+      id = data.google_kms_crypto_key_version.version.id
+      pkix_public_key {
+        public_key_pem      = data.google_kms_crypto_key_version.version.public_key[0].pem
+        signature_algorithm = data.google_kms_crypto_key_version.version.public_key[0].algorithm
+      }
+    }
+  }
+}
+
+data "google_kms_crypto_key_version" "version" {
+  crypto_key = google_kms_crypto_key.crypto-key.self_link
+}
+
+resource "google_container_analysis_note" "note" {
+  name = "test-attestor-note"
+  attestation_authority {
+    hint {
+      human_readable_name = "Attestor Note"
+    }
+  }
+}
+
+resource "google_kms_crypto_key" "crypto-key" {
+  name     = "test-attestor-key"
+  key_ring = google_kms_key_ring.keyring.self_link
+  purpose  = "ASYMMETRIC_SIGN"
+
+  version_template {
+    algorithm = "RSA_SIGN_PKCS1_4096_SHA512"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "google_kms_key_ring" "keyring" {
+  name     = "test-attestor-key-ring"
+  location = "global"
 }
 ```
 
@@ -127,16 +182,49 @@ The `public_keys` block supports:
   A descriptive comment. This field may be updated.
 
 * `id` -
-  This field will be overwritten with key ID information, for
-  example, an identifier extracted from a PGP public key. This
-  field may not be updated.
+  (Optional)
+  The ID of this public key. Signatures verified by BinAuthz
+  must include the ID of the public key that can be used to
+  verify them, and that ID must match the contents of this
+  field exactly. Additional restrictions on this field can
+  be imposed based on which public key type is encapsulated.
+  See the documentation on publicKey cases below for details.
 
 * `ascii_armored_pgp_public_key` -
-  (Required)
+  (Optional)
   ASCII-armored representation of a PGP public key, as the
   entire output by the command
   `gpg --export --armor foo@example.com` (either LF or CRLF
-  line endings).
+  line endings). When using this field, id should be left
+  blank. The BinAuthz API handlers will calculate the ID
+  and fill it in automatically. BinAuthz computes this ID
+  as the OpenPGP RFC4880 V4 fingerprint, represented as
+  upper-case hex. If id is provided by the caller, it will
+  be overwritten by the API-calculated ID.
+
+* `pkix_public_key` -
+  (Optional)
+  A raw PKIX SubjectPublicKeyInfo format public key.
+  NOTE: id may be explicitly provided by the caller when using this
+  type of public key, but it MUST be a valid RFC3986 URI. If id is left
+  blank, a default one will be computed based on the digest of the DER
+  encoding of the public key.  Structure is documented below.
+
+
+The `pkix_public_key` block supports:
+
+* `public_key_pem` -
+  (Optional)
+  A PEM-encoded public key, as described in
+  `https://tools.ietf.org/html/rfc7468#section-13`
+
+* `signature_algorithm` -
+  (Optional)
+  The signature algorithm used to verify a message against
+  a signature using this key. These signature algorithm must
+  match the structure and any object identifiers encoded in
+  publicKeyPem (i.e. this algorithm must match that of the
+  public key).
 
 - - -
 
@@ -165,10 +253,14 @@ This resource provides the following
 Attestor can be imported using any of these accepted formats:
 
 ```
-$ terraform import -provider=google-beta google_binary_authorization_attestor.default projects/{{project}}/attestors/{{name}}
-$ terraform import -provider=google-beta google_binary_authorization_attestor.default {{project}}/{{name}}
-$ terraform import -provider=google-beta google_binary_authorization_attestor.default {{name}}
+$ terraform import google_binary_authorization_attestor.default projects/{{project}}/attestors/{{name}}
+$ terraform import google_binary_authorization_attestor.default {{project}}/{{name}}
+$ terraform import google_binary_authorization_attestor.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

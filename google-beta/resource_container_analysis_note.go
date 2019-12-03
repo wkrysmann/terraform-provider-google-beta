@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceContainerAnalysisNote() *schema.Resource {
@@ -36,27 +36,46 @@ func resourceContainerAnalysisNote() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(240 * time.Second),
-			Update: schema.DefaultTimeout(240 * time.Second),
-			Delete: schema.DefaultTimeout(240 * time.Second),
+			Create: schema.DefaultTimeout(4 * time.Minute),
+			Update: schema.DefaultTimeout(4 * time.Minute),
+			Delete: schema.DefaultTimeout(4 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
 			"attestation_authority": {
 				Type:     schema.TypeList,
 				Required: true,
+				Description: `Note kind that represents a logical attestation "role" or "authority".
+For example, an organization might have one AttestationAuthority for
+"QA" and one for "build". This Note is intended to act strictly as a
+grouping mechanism for the attached Occurrences (Attestations). This
+grouping mechanism also provides a security boundary, since IAM ACLs
+gate the ability for a principle to attach an Occurrence to a given
+Note. It also provides a single point of lookup to find all attached
+Attestation Occurrences, even if they don't all live in the same
+project.`,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"hint": {
 							Type:     schema.TypeList,
 							Required: true,
+							Description: `This submessage provides human-readable hints about the purpose of
+the AttestationAuthority. Because the name of a Note acts as its
+resource reference, it is important to disambiguate the canonical
+name of the Note (which might be a UUID for security purposes)
+from "readable" names more suitable for debug output. Note that
+these hints should NOT be used to look up AttestationAuthorities
+in security sensitive contexts, such as when looking up
+Attestations to verify.`,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"human_readable_name": {
 										Type:     schema.TypeString,
 										Required: true,
+										Description: `The human readable name of this Attestation Authority, for
+example "qa".`,
 									},
 								},
 							},
@@ -65,9 +84,10 @@ func resourceContainerAnalysisNote() *schema.Resource {
 				},
 			},
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: `The name of the note.`,
 			},
 			"project": {
 				Type:     schema.TypeString,
@@ -96,19 +116,28 @@ func resourceContainerAnalysisNoteCreate(d *schema.ResourceData, meta interface{
 		obj["attestationAuthority"] = attestationAuthorityProp
 	}
 
-	url, err := replaceVars(d, config, "https://containeranalysis.googleapis.com/v1beta1/projects/{{project}}/notes?noteId={{name}}")
+	obj, err = resourceContainerAnalysisNoteEncoder(d, meta, obj)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{ContainerAnalysisBasePath}}projects/{{project}}/notes?noteId={{name}}")
 	if err != nil {
 		return err
 	}
 
 	log.Printf("[DEBUG] Creating new Note: %#v", obj)
-	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating Note: %s", err)
 	}
 
 	// Store the ID now
-	id, err := replaceVars(d, config, "{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/notes/{{name}}")
 	if err != nil {
 		return fmt.Errorf("Error constructing id: %s", err)
 	}
@@ -122,20 +151,32 @@ func resourceContainerAnalysisNoteCreate(d *schema.ResourceData, meta interface{
 func resourceContainerAnalysisNoteRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://containeranalysis.googleapis.com/v1beta1/projects/{{project}}/notes/{{name}}")
+	url, err := replaceVars(d, config, "{{ContainerAnalysisBasePath}}projects/{{project}}/notes/{{name}}")
 	if err != nil {
 		return err
-	}
-
-	res, err := sendRequest(config, "GET", url, nil)
-	if err != nil {
-		return handleNotFoundError(err, d, fmt.Sprintf("ContainerAnalysisNote %q", d.Id()))
 	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
+	res, err := sendRequest(config, "GET", project, url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("ContainerAnalysisNote %q", d.Id()))
+	}
+
+	res, err = resourceContainerAnalysisNoteDecoder(d, meta, res)
+	if err != nil {
+		return err
+	}
+
+	if res == nil {
+		// Decoding the object has resulted in it being gone. It may be marked deleted
+		log.Printf("[DEBUG] Removing ContainerAnalysisNote because it no longer exists.")
+		d.SetId("")
+		return nil
+	}
+
 	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading Note: %s", err)
 	}
@@ -153,6 +194,11 @@ func resourceContainerAnalysisNoteRead(d *schema.ResourceData, meta interface{})
 func resourceContainerAnalysisNoteUpdate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
 	obj := make(map[string]interface{})
 	attestationAuthorityProp, err := expandContainerAnalysisNoteAttestationAuthority(d.Get("attestation_authority"), d, config)
 	if err != nil {
@@ -161,7 +207,12 @@ func resourceContainerAnalysisNoteUpdate(d *schema.ResourceData, meta interface{
 		obj["attestationAuthority"] = attestationAuthorityProp
 	}
 
-	url, err := replaceVars(d, config, "https://containeranalysis.googleapis.com/v1beta1/projects/{{project}}/notes/{{name}}")
+	obj, err = resourceContainerAnalysisNoteEncoder(d, meta, obj)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{ContainerAnalysisBasePath}}projects/{{project}}/notes/{{name}}")
 	if err != nil {
 		return err
 	}
@@ -177,7 +228,7 @@ func resourceContainerAnalysisNoteUpdate(d *schema.ResourceData, meta interface{
 	if err != nil {
 		return err
 	}
-	_, err = sendRequestWithTimeout(config, "PATCH", url, obj, d.Timeout(schema.TimeoutUpdate))
+	_, err = sendRequestWithTimeout(config, "PATCH", project, url, obj, d.Timeout(schema.TimeoutUpdate))
 
 	if err != nil {
 		return fmt.Errorf("Error updating Note %q: %s", d.Id(), err)
@@ -189,14 +240,20 @@ func resourceContainerAnalysisNoteUpdate(d *schema.ResourceData, meta interface{
 func resourceContainerAnalysisNoteDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://containeranalysis.googleapis.com/v1beta1/projects/{{project}}/notes/{{name}}")
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{ContainerAnalysisBasePath}}projects/{{project}}/notes/{{name}}")
 	if err != nil {
 		return err
 	}
 
 	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting Note %q", d.Id())
-	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
+
+	res, err := sendRequestWithTimeout(config, "DELETE", project, url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "Note")
 	}
@@ -207,12 +264,16 @@ func resourceContainerAnalysisNoteDelete(d *schema.ResourceData, meta interface{
 
 func resourceContainerAnalysisNoteImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*Config)
-	if err := parseImportId([]string{"projects/(?P<project>[^/]+)/notes/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+	if err := parseImportId([]string{
+		"projects/(?P<project>[^/]+)/notes/(?P<name>[^/]+)",
+		"(?P<project>[^/]+)/(?P<name>[^/]+)",
+		"(?P<name>[^/]+)",
+	}, d, config); err != nil {
 		return nil, err
 	}
 
 	// Replace import id for the resource id
-	id, err := replaceVars(d, config, "{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/notes/{{name}}")
 	if err != nil {
 		return nil, fmt.Errorf("Error constructing id: %s", err)
 	}
@@ -302,4 +363,16 @@ func expandContainerAnalysisNoteAttestationAuthorityHint(v interface{}, d Terraf
 
 func expandContainerAnalysisNoteAttestationAuthorityHintHumanReadableName(v interface{}, d TerraformResourceData, config *Config) (interface{}, error) {
 	return v, nil
+}
+
+func resourceContainerAnalysisNoteEncoder(d *schema.ResourceData, meta interface{}, obj map[string]interface{}) (map[string]interface{}, error) {
+	// encoder logic only in GA provider
+
+	return obj, nil
+}
+
+func resourceContainerAnalysisNoteDecoder(d *schema.ResourceData, meta interface{}, res map[string]interface{}) (map[string]interface{}, error) {
+	// decoder logic only in GA provider
+
+	return res, nil
 }

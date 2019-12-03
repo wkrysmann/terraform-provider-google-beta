@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Compute Engine"
 layout: "google"
 page_title: "Google: google_compute_interconnect_attachment"
 sidebar_current: "docs-google-compute-interconnect-attachment"
@@ -33,12 +34,12 @@ information, see Creating VLAN Attachments.
 resource "google_compute_interconnect_attachment" "on_prem" {
   name         = "on-prem-attachment"
   interconnect = "my-interconnect-id"
-  router       = "${google_compute_router.foobar.self_link}"
+  router       = google_compute_router.foobar.self_link
 }
 
 resource "google_compute_router" "foobar" {
   name    = "router"
-  network = "${google_compute_network.foobar.name}"
+  network = google_compute_network.foobar.name
 }
 ```
 
@@ -67,6 +68,11 @@ The following arguments are supported:
 - - -
 
 
+* `admin_enabled` -
+  (Optional)
+  Whether the VLAN attachment is enabled or disabled.  When using
+  PARTNER type this will Pre-Activate the interconnect attachment
+
 * `interconnect` -
   (Optional)
   URL of the underlying Interconnect object that this attachment's
@@ -76,6 +82,14 @@ The following arguments are supported:
 * `description` -
   (Optional)
   An optional description of this resource.
+
+* `bandwidth` -
+  (Optional)
+  Provisioned bandwidth capacity for the interconnect attachment.
+  For attachments of type DEDICATED, the user can set the bandwidth.
+  For attachments of type PARTNER, the Google Partner that is operating the interconnect must set the bandwidth.
+  Output only for PARTNER type, mutable for PARTNER_PROVIDER and DEDICATED,
+  Defaults to BPS_10G
 
 * `edge_availability_domain` -
   (Optional)
@@ -174,8 +188,13 @@ InterconnectAttachment can be imported using any of these accepted formats:
 ```
 $ terraform import google_compute_interconnect_attachment.default projects/{{project}}/regions/{{region}}/interconnectAttachments/{{name}}
 $ terraform import google_compute_interconnect_attachment.default {{project}}/{{region}}/{{name}}
+$ terraform import google_compute_interconnect_attachment.default {{region}}/{{name}}
 $ terraform import google_compute_interconnect_attachment.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

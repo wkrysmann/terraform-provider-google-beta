@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccSecurityScannerScanConfig_scanConfigBasicExample(t *testing.T) {
@@ -46,13 +46,13 @@ func TestAccSecurityScannerScanConfig_scanConfigBasicExample(t *testing.T) {
 func testAccSecurityScannerScanConfig_scanConfigBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_address" "scanner_static_ip" {
-  provider = "google-beta"
-  name     = "scan-basic-static-ip-%{random_suffix}"
+  provider = google-beta
+  name     = "scan-basic-static-ip%{random_suffix}"
 }
 
 resource "google_security_scanner_scan_config" "scan-config" {
-  provider         = "google-beta"
-  display_name     = "terraform-scan-config-%{random_suffix}"
+  provider         = google-beta
+  display_name     = "terraform-scan-config%{random_suffix}"
   starting_urls    = ["http://${google_compute_address.scanner_static_ip.address}"]
   target_platforms = ["COMPUTE"]
 }
@@ -75,12 +75,12 @@ func testAccCheckSecurityScannerScanConfigDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://websecurityscanner.googleapis.com/v1beta/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{SecurityScannerBasePath}}{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("SecurityScannerScanConfig still exists at %s", url)
 		}

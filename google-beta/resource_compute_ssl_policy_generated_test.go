@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeSslPolicy_sslPolicyBasicExample(t *testing.T) {
@@ -51,18 +51,18 @@ func TestAccComputeSslPolicy_sslPolicyBasicExample(t *testing.T) {
 func testAccComputeSslPolicy_sslPolicyBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_ssl_policy" "prod-ssl-policy" {
-  name    = "production-ssl-policy-%{random_suffix}"
+  name    = "production-ssl-policy%{random_suffix}"
   profile = "MODERN"
 }
 
 resource "google_compute_ssl_policy" "nonprod-ssl-policy" {
-  name            = "nonprod-ssl-policy-%{random_suffix}"
+  name            = "nonprod-ssl-policy%{random_suffix}"
   profile         = "MODERN"
   min_tls_version = "TLS_1_2"
 }
 
 resource "google_compute_ssl_policy" "custom-ssl-policy" {
-  name            = "custom-ssl-policy-%{random_suffix}"
+  name            = "custom-ssl-policy%{random_suffix}"
   min_tls_version = "TLS_1_2"
   profile         = "CUSTOM"
   custom_features = ["TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"]
@@ -81,12 +81,12 @@ func testAccCheckComputeSslPolicyDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/sslPolicies/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/global/sslPolicies/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeSslPolicy still exists at %s", url)
 		}

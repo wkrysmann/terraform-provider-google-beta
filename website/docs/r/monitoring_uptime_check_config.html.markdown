@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Stackdriver Monitoring"
 layout: "google"
 page_title: "Google: google_monitoring_uptime_check_config"
 sidebar_current: "docs-google-monitoring-uptime-check-config"
@@ -41,7 +42,7 @@ To get more information about UptimeCheckConfig, see:
 ```hcl
 resource "google_monitoring_uptime_check_config" "http" {
   display_name = "http-uptime-check"
-  timeout = "60s"
+  timeout      = "60s"
 
   http_check {
     path = "/some-path"
@@ -51,7 +52,40 @@ resource "google_monitoring_uptime_check_config" "http" {
   monitored_resource {
     type = "uptime_url"
     labels = {
-      project_id = "example"
+      project_id = "my-project-name"
+      host       = "192.168.1.1"
+    }
+  }
+
+  content_matchers {
+    content = "example"
+  }
+}
+```
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=uptime_check_config_https&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Uptime Check Config Https
+
+
+```hcl
+resource "google_monitoring_uptime_check_config" "https" {
+  display_name = "https-uptime-check"
+  timeout = "60s"
+
+  http_check {
+    path = "/some-path"
+    port = "443"
+    use_ssl = true
+    validate_ssl = true
+  }
+
+  monitored_resource {
+    type = "uptime_url"
+    labels = {
+      project_id = "my-project-name"
       host = "192.168.1.1"
     }
   }
@@ -72,7 +106,7 @@ resource "google_monitoring_uptime_check_config" "http" {
 ```hcl
 resource "google_monitoring_uptime_check_config" "tcp_group" {
   display_name = "tcp-uptime-check"
-  timeout = "60s"
+  timeout      = "60s"
 
   tcp_check {
     port = 888
@@ -80,14 +114,13 @@ resource "google_monitoring_uptime_check_config" "tcp_group" {
 
   resource_group {
     resource_type = "INSTANCE"
-    group_id = "${google_monitoring_group.check.name}"
+    group_id      = google_monitoring_group.check.name
   }
 }
 
-
 resource "google_monitoring_group" "check" {
   display_name = "uptime-check-group"
-  filter = "resource.metadata.name=has_substring(\"foo\")"
+  filter       = "resource.metadata.name=has_substring(\"foo\")"
 }
 ```
 
@@ -120,14 +153,6 @@ The following arguments are supported:
   (Optional)
   The list of regions from which the check will be run. Some regions contain one location, and others contain more than one. If this field is specified, enough regions to include a minimum of 3 locations must be provided, or an error message is returned. Not specifying this field will result in uptime checks running from all regions.
 
-* `is_internal` -
-  (Optional)
-  If this is true, then checks are made only from the 'internal_checkers'. If it is false, then checks are made only from the 'selected_regions'. It is an error to provide 'selected_regions' when is_internal is true, or to provide 'internal_checkers' when is_internal is false.
-
-* `internal_checkers` -
-  (Optional)
-  The internal checkers that this check will egress from. If is_internal is true and this list is empty, the check will egress from all the InternalCheckers configured for the project that owns this CheckConfig.  Structure is documented below.
-
 * `http_check` -
   (Optional)
   Contains information needed to make an HTTP or HTTPS check.  Structure is documented below.
@@ -151,30 +176,8 @@ The following arguments are supported:
 The `content_matchers` block supports:
 
 * `content` -
-  (Optional)
+  (Required)
   String or regex content to match (max 1024 bytes)
-
-The `internal_checkers` block supports:
-
-* `gcp_zone` -
-  (Optional)
-  The GCP zone the uptime check should egress from. Only respected for internal uptime checks, where internal_network is specified.
-
-* `peer_project_id` -
-  (Optional)
-  The GCP project_id where the internal checker lives. Not necessary the same as the workspace project.
-
-* `name` -
-  (Optional)
-  A unique resource name for this InternalChecker. The format is projects/[PROJECT_ID]/internalCheckers/[INTERNAL_CHECKER_ID]. PROJECT_ID is the stackdriver workspace project for the uptime check config associated with the internal checker.
-
-* `network` -
-  (Optional)
-  The GCP VPC network (https://cloud.google.com/vpc/docs/vpc) where the internal resource lives (ex: "default").
-
-* `display_name` -
-  (Optional)
-  The checker's human-readable name. The display name should be unique within a Stackdriver Workspace in order to make it easier to identify; however, uniqueness is not enforced.
 
 The `http_check` block supports:
 
@@ -198,19 +201,23 @@ The `http_check` block supports:
   (Optional)
   If true, use HTTPS instead of HTTP to run the check.
 
+* `validate_ssl` -
+  (Optional)
+  Boolean specifying whether to include SSL certificate validation as a part of the Uptime check. Only applies to checks where monitoredResource is set to uptime_url. If useSsl is false, setting validateSsl to true has no effect.
+
 * `mask_headers` -
   (Optional)
-  Boolean specifiying whether to encrypt the header information. Encryption should be specified for any headers related to authentication that you do not wish to be seen when retrieving the configuration. The server will be responsible for encrypting the headers. On Get/List calls, if mask_headers is set to True then the headers will be obscured with ******.
+  Boolean specifying whether to encrypt the header information. Encryption should be specified for any headers related to authentication that you do not wish to be seen when retrieving the configuration. The server will be responsible for encrypting the headers. On Get/List calls, if mask_headers is set to True then the headers will be obscured with ******.
 
 
 The `auth_info` block supports:
 
 * `password` -
-  (Optional)
+  (Required)
   The password to authenticate.
 
 * `username` -
-  (Optional)
+  (Required)
   The username to authenticate.
 
 The `tcp_check` block supports:
@@ -270,3 +277,7 @@ $ terraform import google_monitoring_uptime_check_config.default {{name}}
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

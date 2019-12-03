@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeTargetHttpsProxy_targetHttpsProxyBasicExample(t *testing.T) {
@@ -51,22 +51,22 @@ func TestAccComputeTargetHttpsProxy_targetHttpsProxyBasicExample(t *testing.T) {
 func testAccComputeTargetHttpsProxy_targetHttpsProxyBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_target_https_proxy" "default" {
-  name             = "test-proxy-%{random_suffix}"
-  url_map          = "${google_compute_url_map.default.self_link}"
-  ssl_certificates = ["${google_compute_ssl_certificate.default.self_link}"]
+  name             = "test-proxy%{random_suffix}"
+  url_map          = google_compute_url_map.default.self_link
+  ssl_certificates = [google_compute_ssl_certificate.default.self_link]
 }
 
 resource "google_compute_ssl_certificate" "default" {
-  name        = "my-certificate-%{random_suffix}"
-  private_key = "${file("test-fixtures/ssl_cert/test.key")}"
-  certificate = "${file("test-fixtures/ssl_cert/test.crt")}"
+  name        = "my-certificate%{random_suffix}"
+  private_key = file("test-fixtures/ssl_cert/test.key")
+  certificate = file("test-fixtures/ssl_cert/test.crt")
 }
 
 resource "google_compute_url_map" "default" {
-  name        = "url-map-%{random_suffix}"
+  name        = "url-map%{random_suffix}"
   description = "a description"
 
-  default_service = "${google_compute_backend_service.default.self_link}"
+  default_service = google_compute_backend_service.default.self_link
 
   host_rule {
     hosts        = ["mysite.com"]
@@ -75,26 +75,26 @@ resource "google_compute_url_map" "default" {
 
   path_matcher {
     name            = "allpaths"
-    default_service = "${google_compute_backend_service.default.self_link}"
+    default_service = google_compute_backend_service.default.self_link
 
     path_rule {
       paths   = ["/*"]
-      service = "${google_compute_backend_service.default.self_link}"
+      service = google_compute_backend_service.default.self_link
     }
   }
 }
 
 resource "google_compute_backend_service" "default" {
-  name        = "backend-service-%{random_suffix}"
+  name        = "backend-service%{random_suffix}"
   port_name   = "http"
   protocol    = "HTTP"
   timeout_sec = 10
 
-  health_checks = ["${google_compute_http_health_check.default.self_link}"]
+  health_checks = [google_compute_http_health_check.default.self_link]
 }
 
 resource "google_compute_http_health_check" "default" {
-  name               = "http-health-check-%{random_suffix}"
+  name               = "http-health-check%{random_suffix}"
   request_path       = "/"
   check_interval_sec = 1
   timeout_sec        = 1
@@ -113,12 +113,12 @@ func testAccCheckComputeTargetHttpsProxyDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/targetHttpsProxies/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/global/targetHttpsProxies/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeTargetHttpsProxy still exists at %s", url)
 		}

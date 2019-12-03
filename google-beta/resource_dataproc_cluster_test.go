@@ -6,17 +6,18 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 
-	"google.golang.org/api/dataproc/v1"
+	dataproc "google.golang.org/api/dataproc/v1beta2"
 	"google.golang.org/api/googleapi"
 )
 
-func TestExtractInitTimeout(t *testing.T) {
+func TestDataprocExtractInitTimeout(t *testing.T) {
 	t.Parallel()
 
 	actual, err := extractInitTimeout("500s")
@@ -29,7 +30,7 @@ func TestExtractInitTimeout(t *testing.T) {
 	}
 }
 
-func TestExtractInitTimeout_nonSeconds(t *testing.T) {
+func TestDataprocExtractInitTimeout_nonSeconds(t *testing.T) {
 	t.Parallel()
 
 	actual, err := extractInitTimeout("5m")
@@ -42,7 +43,7 @@ func TestExtractInitTimeout_nonSeconds(t *testing.T) {
 	}
 }
 
-func TestExtractInitTimeout_empty(t *testing.T) {
+func TestDataprocExtractInitTimeout_empty(t *testing.T) {
 	t.Parallel()
 
 	_, err := extractInitTimeout("")
@@ -51,6 +52,85 @@ func TestExtractInitTimeout_empty(t *testing.T) {
 		return
 	}
 	t.Fatalf("Expected an error with message '%s', but got %v", expected, err.Error())
+}
+
+func TestDataprocParseImageVersion(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]dataprocImageVersion{
+		"1.2":             {"1", "2", "", ""},
+		"1.2.3":           {"1", "2", "3", ""},
+		"1.2.3rc":         {"1", "2", "3rc", ""},
+		"1.2-debian9":     {"1", "2", "", "debian9"},
+		"1.2.3-debian9":   {"1", "2", "3", "debian9"},
+		"1.2.3rc-debian9": {"1", "2", "3rc", "debian9"},
+	}
+
+	for v, expected := range testCases {
+		actual, err := parseDataprocImageVersion(v)
+		if actual.major != expected.major {
+			t.Errorf("parsing version %q returned error: %v", v, err)
+		}
+		if err != nil {
+			t.Errorf("parsing version %q returned error: %v", v, err)
+		}
+		if actual.minor != expected.minor {
+			t.Errorf("parsing version %q returned error: %v", v, err)
+		}
+		if actual.subminor != expected.subminor {
+			t.Errorf("parsing version %q returned error: %v", v, err)
+		}
+		if actual.osName != expected.osName {
+			t.Errorf("parsing version %q returned error: %v", v, err)
+		}
+	}
+
+	errorTestCases := []string{
+		"",
+		"1",
+		"notaversion",
+		"1-debian",
+	}
+	for _, v := range errorTestCases {
+		if _, err := parseDataprocImageVersion(v); err == nil {
+			t.Errorf("expected parsing invalid version %q to return error", v)
+		}
+	}
+}
+
+func TestDataprocDiffSuppress(t *testing.T) {
+	t.Parallel()
+
+	doSuppress := [][]string{
+		{"1.3.10-debian9", "1.3"},
+		{"1.3.10-debian9", "1.3-debian9"},
+		{"1.3.10", "1.3"},
+		{"1.3-debian9", "1.3"},
+	}
+
+	noSuppress := [][]string{
+		{"1.3.10-debian9", "1.3.10-ubuntu"},
+		{"1.3.10-debian9", "1.3.9-debian9"},
+		{"1.3.10-debian9", "1.3-ubuntu"},
+		{"1.3.10-debian9", "1.3.9"},
+		{"1.3.10-debian9", "1.4"},
+		{"1.3.10-debian9", "2.3"},
+		{"1.3.10", "1.3.10-debian9"},
+		{"1.3", "1.3.10"},
+		{"1.3", "1.3.10-debian9"},
+		{"1.3", "1.3-debian9"},
+	}
+
+	for _, tup := range doSuppress {
+		if !dataprocImageVersionDiffSuppress("", tup[0], tup[1], nil) {
+			t.Errorf("expected (old: %q, new: %q) to be suppressed", tup[0], tup[1])
+		}
+	}
+	for _, tup := range noSuppress {
+		if dataprocImageVersionDiffSuppress("", tup[0], tup[1], nil) {
+			t.Errorf("expected (old: %q, new: %q) to not be suppressed", tup[0], tup[1])
+		}
+	}
 }
 
 func TestAccDataprocCluster_missingZoneGlobalRegion1(t *testing.T) {
@@ -428,6 +508,27 @@ func TestAccDataprocCluster_withImageVersion(t *testing.T) {
 	})
 }
 
+func TestAccDataprocCluster_withOptionalComponents(t *testing.T) {
+	t.Parallel()
+
+	rnd := acctest.RandString(10)
+	var cluster dataproc.Cluster
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDataprocClusterDestroy(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDataprocCluster_withOptionalComponents(rnd),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataprocClusterExists("google_dataproc_cluster.with_opt_components", &cluster),
+					testAccCheckDataprocClusterHasOptionalComponents(&cluster, "ANACONDA", "ZOOKEEPER"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDataprocCluster_withLabels(t *testing.T) {
 	t.Parallel()
 
@@ -523,8 +624,10 @@ func testAccCheckDataprocClusterDestroy() resource.TestCheckFunc {
 				return err
 			}
 
-			_, err = config.clientDataproc.Projects.Regions.Clusters.Get(
-				project, attributes["region"], rs.Primary.ID).Do()
+			parts := strings.Split(rs.Primary.ID, "/")
+			clusterId := parts[len(parts)-1]
+			_, err = config.clientDataprocBeta.Projects.Regions.Clusters.Get(
+				project, attributes["region"], clusterId).Do()
 
 			if err != nil {
 				if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == http.StatusNotFound {
@@ -580,7 +683,17 @@ func testAccCheckDataprocStagingBucketExists(bucketName string) resource.TestChe
 		}
 		return nil
 	}
+}
 
+func testAccCheckDataprocClusterHasOptionalComponents(cluster *dataproc.Cluster, components ...string) func(s *terraform.State) error {
+	return func(s *terraform.State) error {
+
+		if !reflect.DeepEqual(components, cluster.Config.SoftwareConfig.OptionalComponents) {
+			return fmt.Errorf("Cluster does not contain expected optional components : %v : instead %v",
+				components, cluster.Config.SoftwareConfig.OptionalComponents)
+		}
+		return nil
+	}
 }
 
 func testAccCheckDataprocClusterInitActionSucceeded(bucket, object string) resource.TestCheckFunc {
@@ -623,6 +736,7 @@ func validateDataprocCluster_withConfigOverrides(n string, cluster *dataproc.Clu
 			{"cluster_config.0.master_config.0.disk_config.0.boot_disk_type", "pd-ssd", cluster.Config.MasterConfig.DiskConfig.BootDiskType},
 			{"cluster_config.0.master_config.0.machine_type", "n1-standard-1", GetResourceNameFromSelfLink(cluster.Config.MasterConfig.MachineTypeUri)},
 			{"cluster_config.0.master_config.0.instance_names.#", "3", strconv.Itoa(len(cluster.Config.MasterConfig.InstanceNames))},
+			{"cluster_config.0.master_config.0.min_cpu_platform", "Intel Skylake", cluster.Config.MasterConfig.MinCpuPlatform},
 
 			{"cluster_config.0.worker_config.0.num_instances", "3", strconv.Itoa(int(cluster.Config.WorkerConfig.NumInstances))},
 			{"cluster_config.0.worker_config.0.disk_config.0.boot_disk_size_gb", "16", strconv.Itoa(int(cluster.Config.WorkerConfig.DiskConfig.BootDiskSizeGb))},
@@ -630,6 +744,7 @@ func validateDataprocCluster_withConfigOverrides(n string, cluster *dataproc.Clu
 			{"cluster_config.0.worker_config.0.disk_config.0.boot_disk_type", "pd-standard", cluster.Config.WorkerConfig.DiskConfig.BootDiskType},
 			{"cluster_config.0.worker_config.0.machine_type", "n1-standard-1", GetResourceNameFromSelfLink(cluster.Config.WorkerConfig.MachineTypeUri)},
 			{"cluster_config.0.worker_config.0.instance_names.#", "3", strconv.Itoa(len(cluster.Config.WorkerConfig.InstanceNames))},
+			{"cluster_config.0.worker_config.0.min_cpu_platform", "Intel Broadwell", cluster.Config.WorkerConfig.MinCpuPlatform},
 
 			{"cluster_config.0.preemptible_worker_config.0.num_instances", "1", strconv.Itoa(int(cluster.Config.SecondaryWorkerConfig.NumInstances))},
 			{"cluster_config.0.preemptible_worker_config.0.disk_config.0.boot_disk_size_gb", "17", strconv.Itoa(int(cluster.Config.SecondaryWorkerConfig.DiskConfig.BootDiskSizeGb))},
@@ -669,14 +784,16 @@ func testAccCheckDataprocClusterExists(n string, cluster *dataproc.Cluster) reso
 			return err
 		}
 
-		found, err := config.clientDataproc.Projects.Regions.Clusters.Get(
-			project, rs.Primary.Attributes["region"], rs.Primary.ID).Do()
+		parts := strings.Split(rs.Primary.ID, "/")
+		clusterId := parts[len(parts)-1]
+		found, err := config.clientDataprocBeta.Projects.Regions.Clusters.Get(
+			project, rs.Primary.Attributes["region"], clusterId).Do()
 		if err != nil {
 			return err
 		}
 
-		if found.ClusterName != rs.Primary.ID {
-			return fmt.Errorf("Dataproc cluster %s not found, found %s instead", rs.Primary.ID, cluster.ClusterName)
+		if found.ClusterName != clusterId {
+			return fmt.Errorf("Dataproc cluster %s not found, found %s instead", clusterId, cluster.ClusterName)
 		}
 
 		*cluster = *found
@@ -688,8 +805,8 @@ func testAccCheckDataprocClusterExists(n string, cluster *dataproc.Cluster) reso
 func testAccCheckDataproc_missingZoneGlobalRegion1(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "basic" {
-	name                  = "dproc-cluster-test-%s"
-	region                = "global"
+  name   = "dproc-cluster-test-%s"
+  region = "global"
 }
 `, rnd)
 }
@@ -697,12 +814,14 @@ resource "google_dataproc_cluster" "basic" {
 func testAccCheckDataproc_missingZoneGlobalRegion2(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "basic" {
-	name                  = "dproc-cluster-test-%s"
-	region                = "global"
+  name   = "dproc-cluster-test-%s"
+  region = "global"
 
-	cluster_config {
-		gce_cluster_config { }
-	}
+  cluster_config {
+    gce_cluster_config {
+      network = "default"
+    }
+  }
 }
 `, rnd)
 }
@@ -710,8 +829,8 @@ resource "google_dataproc_cluster" "basic" {
 func testAccDataprocCluster_basic(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "basic" {
-	name                  = "dproc-cluster-test-%s"
-	region                = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 }
 `, rnd)
 }
@@ -719,41 +838,41 @@ resource "google_dataproc_cluster" "basic" {
 func testAccDataprocCluster_withAccelerators(rnd, zone, acceleratorType string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "accelerated_cluster" {
-	name                  = "dproc-cluster-test-%s"
-	region                = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
-		gce_cluster_config {
-			zone = "%s"
-		}
+  cluster_config {
+    gce_cluster_config {
+      zone = "%s"
+    }
 
-		master_config {
-			accelerators {
-				accelerator_type  = "%s"
-				accelerator_count = "1"
-			}
-		}
+    master_config {
+      accelerators {
+        accelerator_type  = "%s"
+        accelerator_count = "1"
+      }
+    }
 
-		worker_config {
-			accelerators {
-				accelerator_type  = "%s"
-				accelerator_count = "1"
-			}
-		}
-	}
+    worker_config {
+      accelerators {
+        accelerator_type  = "%s"
+        accelerator_count = "1"
+      }
+    }
+  }
 }
 `, rnd, zone, acceleratorType, acceleratorType)
 }
 
 func testAccDataprocCluster_withInternalIpOnlyTrue(rnd string) string {
 	return fmt.Sprintf(`
-variable subnetwork_cidr {
-	default = "10.0.0.0/16"
+variable "subnetwork_cidr" {
+  default = "10.0.0.0/16"
 }
 
 resource "google_compute_network" "dataproc_network" {
-	name = "dataproc-internalip-network-%s"
-	auto_create_subnetworks = false
+  name                    = "dataproc-internalip-network-%s"
+  auto_create_subnetworks = false
 }
 
 #
@@ -761,12 +880,12 @@ resource "google_compute_network" "dataproc_network" {
 # deploying a Dataproc cluster with Internal IP Only enabled.
 #
 resource "google_compute_subnetwork" "dataproc_subnetwork" {
-	name                     = "dataproc-internalip-subnetwork-%s"
-	ip_cidr_range            = "${var.subnetwork_cidr}"
-	network                  = "${google_compute_network.dataproc_network.self_link}"
-	region                   = "us-central1"
-	private_ip_google_access = true
-  }
+  name                     = "dataproc-internalip-subnetwork-%s"
+  ip_cidr_range            = var.subnetwork_cidr
+  network                  = google_compute_network.dataproc_network.self_link
+  region                   = "us-central1"
+  private_ip_google_access = true
+}
 
 #
 # The default network within GCP already comes pre configured with
@@ -776,37 +895,38 @@ resource "google_compute_subnetwork" "dataproc_subnetwork" {
 # internally as part of their configuration or this will just hang.
 #
 resource "google_compute_firewall" "dataproc_network_firewall" {
-	name = "dproc-cluster-test-allow-internal"
-	description = "Firewall rules for dataproc Terraform acceptance testing"
-	network = "${google_compute_network.dataproc_network.name}"
+  name        = "dproc-cluster-test-allow-internal"
+  description = "Firewall rules for dataproc Terraform acceptance testing"
+  network     = google_compute_network.dataproc_network.name
 
-	allow {
-		protocol = "icmp"
-	}
+  allow {
+    protocol = "icmp"
+  }
 
-	allow {
-		protocol = "tcp"
-		ports    = ["0-65535"]
-	}
+  allow {
+    protocol = "tcp"
+    ports    = ["0-65535"]
+  }
 
-	allow {
-		protocol = "udp"
-		ports    = ["0-65535"]
-	}
+  allow {
+    protocol = "udp"
+    ports    = ["0-65535"]
+  }
 
-	source_ranges = ["${var.subnetwork_cidr}"]
+  source_ranges = [var.subnetwork_cidr]
 }
-resource "google_dataproc_cluster" "basic" {
-	name                  = "dproc-cluster-test-%s"
-	region                = "us-central1"
-	depends_on            = ["google_compute_firewall.dataproc_network_firewall"]
 
-	cluster_config {
-		gce_cluster_config {
-			subnetwork       = "${google_compute_subnetwork.dataproc_subnetwork.name}"
-			internal_ip_only = true
-		}
-	}
+resource "google_dataproc_cluster" "basic" {
+  name       = "dproc-cluster-test-%s"
+  region     = "us-central1"
+  depends_on = [google_compute_firewall.dataproc_network_firewall]
+
+  cluster_config {
+    gce_cluster_config {
+      subnetwork       = google_compute_subnetwork.dataproc_subnetwork.name
+      internal_ip_only = true
+    }
+  }
 }
 `, rnd, rnd, rnd)
 }
@@ -814,18 +934,18 @@ resource "google_dataproc_cluster" "basic" {
 func testAccDataprocCluster_withMetadataAndTags(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "basic" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
-		gce_cluster_config {
-			metadata = {
-				foo = "bar"
-				baz = "qux"
-			}
-			tags = ["my-tag", "your-tag", "our-tag", "their-tag"]
-		}
-	}
+  cluster_config {
+    gce_cluster_config {
+      metadata = {
+        foo = "bar"
+        baz = "qux"
+      }
+      tags = ["my-tag", "your-tag", "our-tag", "their-tag"]
+    }
+  }
 }
 `, rnd)
 }
@@ -833,17 +953,17 @@ resource "google_dataproc_cluster" "basic" {
 func testAccDataprocCluster_singleNodeCluster(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "single_node_cluster" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
-		# Keep the costs down with smallest config we can get away with
-		software_config {
-			override_properties = {
-				"dataproc:dataproc.allow.zero.workers" = "true"
-			}
-		}
-	}
+  cluster_config {
+    # Keep the costs down with smallest config we can get away with
+    software_config {
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true"
+      }
+    }
+  }
 }
 `, rnd)
 }
@@ -851,53 +971,56 @@ resource "google_dataproc_cluster" "single_node_cluster" {
 func testAccDataprocCluster_withConfigOverrides(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "with_config_overrides" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name     = "dproc-cluster-test-%s"
+  region   = "us-central1"
 
-	cluster_config {
+  cluster_config {
+    master_config {
+      num_instances = 3
+      machine_type  = "n1-standard-1"
+      disk_config {
+        boot_disk_type    = "pd-ssd"
+        boot_disk_size_gb = 15
+      }
+      min_cpu_platform = "Intel Skylake"
+    }
 
-		master_config {
-			num_instances     = 3
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_type    = "pd-ssd"
-				boot_disk_size_gb = 15
-			}
-		}
+    worker_config {
+      num_instances = 3
+      machine_type  = "n1-standard-1"
+      disk_config {
+        boot_disk_type    = "pd-standard"
+        boot_disk_size_gb = 16
+        num_local_ssds    = 1
+      }
 
-		worker_config {
-			num_instances     = 3
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_type    = "pd-standard"
-				boot_disk_size_gb = 16
-				num_local_ssds    = 1
-			}
-		}
+      min_cpu_platform = "Intel Broadwell"
+    }
 
-		preemptible_worker_config {
-			num_instances     = 1
-			disk_config {
-				boot_disk_type    = "pd-ssd"
-				boot_disk_size_gb = 17
-				num_local_ssds    = 1
-			}
-		}
-	}
-}`, rnd)
+    preemptible_worker_config {
+      num_instances = 1
+      disk_config {
+        boot_disk_type    = "pd-ssd"
+        boot_disk_size_gb = 17
+        num_local_ssds    = 1
+      }
+    }
+  }
+}
+`, rnd)
 }
 
 func testAccDataprocCluster_withInitAction(rnd, bucket, objName string) string {
 	return fmt.Sprintf(`
 resource "google_storage_bucket" "init_bucket" {
-	name          = "%s"
-	force_destroy = "true"
+  name          = "%s"
+  force_destroy = "true"
 }
 
 resource "google_storage_bucket_object" "init_script" {
-	name           = "dproc-cluster-test-%s-init-script.sh"
-	bucket         = "${google_storage_bucket.init_bucket.name}"
-	content        = <<EOL
+  name    = "dproc-cluster-test-%s-init-script.sh"
+  bucket  = google_storage_bucket.init_bucket.name
+  content = <<EOL
 #!/bin/bash
 echo "init action success" >> /tmp/%s
 gsutil cp /tmp/%s ${google_storage_bucket.init_bucket.url}
@@ -906,76 +1029,77 @@ EOL
 }
 
 resource "google_dataproc_cluster" "with_init_action" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
-		# Keep the costs down with smallest config we can get away with
-		software_config {
-			override_properties = {
-				"dataproc:dataproc.allow.zero.workers" = "true"
-			}
-		}
+  cluster_config {
+    # Keep the costs down with smallest config we can get away with
+    software_config {
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true"
+      }
+    }
 
-		master_config {
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
+    master_config {
+      machine_type = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
 
-		initialization_action {
-			script      = "${google_storage_bucket.init_bucket.url}/${google_storage_bucket_object.init_script.name}"
-			timeout_sec = 500
-		}
-		initialization_action {
-			script      = "${google_storage_bucket.init_bucket.url}/${google_storage_bucket_object.init_script.name}"
-		}
-	}
-}`, bucket, rnd, objName, objName, rnd)
+    initialization_action {
+      script      = "${google_storage_bucket.init_bucket.url}/${google_storage_bucket_object.init_script.name}"
+      timeout_sec = 500
+    }
+    initialization_action {
+      script = "${google_storage_bucket.init_bucket.url}/${google_storage_bucket_object.init_script.name}"
+    }
+  }
+}
+`, bucket, rnd, objName, objName, rnd)
 }
 
 func testAccDataprocCluster_updatable(rnd string, w, p int) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "updatable" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
+  cluster_config {
+    master_config {
+      num_instances = "1"
+      machine_type  = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
 
-		master_config {
-			num_instances      = "1"
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
+    worker_config {
+      num_instances = "%d"
+      machine_type  = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
 
-		worker_config {
-			num_instances      = "%d"
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
-
-		preemptible_worker_config {
-			num_instances      = "%d"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
-	}
-
-}`, rnd, w, p)
+    preemptible_worker_config {
+      num_instances = "%d"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
+  }
+}
+`, rnd, w, p)
 }
 
 func testAccDataprocCluster_withStagingBucketOnly(bucketName string) string {
 	return fmt.Sprintf(`
 resource "google_storage_bucket" "bucket" {
-	name          = "%s"
-	force_destroy = "true"
-}`, bucketName)
+  name          = "%s"
+  force_destroy = "true"
+}
+`, bucketName)
 }
 
 func testAccDataprocCluster_withStagingBucketAndCluster(clusterName, bucketName string) string {
@@ -983,118 +1107,136 @@ func testAccDataprocCluster_withStagingBucketAndCluster(clusterName, bucketName 
 %s
 
 resource "google_dataproc_cluster" "with_bucket" {
-	name   = "%s"
-	region = "us-central1"
+  name   = "%s"
+  region = "us-central1"
 
-	cluster_config {
-		staging_bucket = "${google_storage_bucket.bucket.name}"
+  cluster_config {
+    staging_bucket = google_storage_bucket.bucket.name
 
-		# Keep the costs down with smallest config we can get away with
-		software_config {
-			override_properties = {
-				"dataproc:dataproc.allow.zero.workers" = "true"
-			}
-		}
+    # Keep the costs down with smallest config we can get away with
+    software_config {
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true"
+      }
+    }
 
-		master_config {
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
-	}
-}`, testAccDataprocCluster_withStagingBucketOnly(bucketName), clusterName)
+    master_config {
+      machine_type = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
+  }
+}
+`, testAccDataprocCluster_withStagingBucketOnly(bucketName), clusterName)
 }
 
 func testAccDataprocCluster_withLabels(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "with_labels" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	labels = {
-		key1 = "value1"
-	}
+  labels = {
+    key1 = "value1"
+  }
 
-	# This is because GCP automatically adds its own labels as well.
-	# In this case we just want to test our newly added label is there
-	lifecycle {
-	    ignore_changes = ["labels"]
-	}
-
-}`, rnd)
+  # This is because GCP automatically adds its own labels as well.
+  # In this case we just want to test our newly added label is there
+  lifecycle {
+    ignore_changes = [labels]
+  }
+}
+`, rnd)
 }
 
 func testAccDataprocCluster_withImageVersion(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "with_image_version" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
-		software_config {
-			image_version = "1.3.7-deb9"
-		}
-	}
-}`, rnd)
+  cluster_config {
+    software_config {
+      image_version = "1.3.7-deb9"
+    }
+  }
+}
+`, rnd)
+}
+
+func testAccDataprocCluster_withOptionalComponents(rnd string) string {
+	return fmt.Sprintf(`
+resource "google_dataproc_cluster" "with_opt_components" {
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
+
+  cluster_config {
+    software_config {
+      optional_components = ["ANACONDA", "ZOOKEEPER"]
+    }
+  }
+}
+`, rnd)
 }
 
 func testAccDataprocCluster_withServiceAcc(sa string, rnd string) string {
 	return fmt.Sprintf(`
 resource "google_service_account" "service_account" {
-	account_id = "%s"
+  account_id = "%s"
 }
 
 resource "google_project_iam_member" "service_account" {
-	role = "roles/dataproc.worker"
-	member = "serviceAccount:${google_service_account.service_account.email}"
+  role   = "roles/dataproc.worker"
+  member = "serviceAccount:${google_service_account.service_account.email}"
 }
 
 resource "google_dataproc_cluster" "with_service_account" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
 
-	cluster_config {
-		# Keep the costs down with smallest config we can get away with
-		software_config {
-			override_properties = {
-				"dataproc:dataproc.allow.zero.workers" = "true"
-			}
-		}
+  cluster_config {
+    # Keep the costs down with smallest config we can get away with
+    software_config {
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true"
+      }
+    }
 
-		master_config {
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
+    master_config {
+      machine_type = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
 
-		gce_cluster_config {
-			service_account = "${google_service_account.service_account.email}"
-			service_account_scopes = [
-				#	User supplied scopes
-				"https://www.googleapis.com/auth/monitoring",
+    gce_cluster_config {
+      service_account = google_service_account.service_account.email
+      service_account_scopes = [
+		#	User supplied scopes
+        "https://www.googleapis.com/auth/monitoring",
+		#	The following scopes necessary for the cluster to function properly are
+		#	always added, even if not explicitly specified:
+		#		useraccounts-ro: https://www.googleapis.com/auth/cloud.useraccounts.readonly
+		#		storage-rw:      https://www.googleapis.com/auth/devstorage.read_write
+		#		logging-write:   https://www.googleapis.com/auth/logging.write
+        "useraccounts-ro",
+        "storage-rw",
+        "logging-write",
+      ]
+    }
+  }
 
-				#	The following scopes necessary for the cluster to function properly are
-				#	always added, even if not explicitly specified:
-				#		useraccounts-ro: https://www.googleapis.com/auth/cloud.useraccounts.readonly
-				#		storage-rw:      https://www.googleapis.com/auth/devstorage.read_write
-				#		logging-write:   https://www.googleapis.com/auth/logging.write
-				"useraccounts-ro","storage-rw","logging-write"
-			]
-		}
-	}
-
-	depends_on = ["google_project_iam_member.service_account"]
-
-}`, sa, rnd)
+  depends_on = [google_project_iam_member.service_account]
+}
+`, sa, rnd)
 }
 
 func testAccDataprocCluster_withNetworkRefs(rnd, netName string) string {
 	return fmt.Sprintf(`
 resource "google_compute_network" "dataproc_network" {
-	name = "%s"
-	auto_create_subnetworks = true
+  name                    = "%s"
+  auto_create_subnetworks = true
 }
 
 #
@@ -1105,101 +1247,103 @@ resource "google_compute_network" "dataproc_network" {
 # internally as part of their configuration or this will just hang.
 #
 resource "google_compute_firewall" "dataproc_network_firewall" {
-	name = "dproc-cluster-test-%s-allow-internal"
-	description = "Firewall rules for dataproc Terraform acceptance testing"
-	network = "${google_compute_network.dataproc_network.name}"
-	source_ranges = ["192.168.0.0/16"]
+  name          = "dproc-cluster-test-%s-allow-internal"
+  description   = "Firewall rules for dataproc Terraform acceptance testing"
+  network       = google_compute_network.dataproc_network.name
+  source_ranges = ["192.168.0.0/16"]
 
-	allow {
-		protocol = "icmp"
-	}
+  allow {
+    protocol = "icmp"
+  }
 
-	allow {
-		protocol = "tcp"
-		ports    = ["0-65535"]
-	}
+  allow {
+    protocol = "tcp"
+    ports    = ["0-65535"]
+  }
 
-	allow {
-		protocol = "udp"
-		ports    = ["0-65535"]
-	}
+  allow {
+    protocol = "udp"
+    ports    = ["0-65535"]
+  }
 }
 
 resource "google_dataproc_cluster" "with_net_ref_by_name" {
-	name   = "dproc-cluster-test-%s-name"
-	region = "us-central1"
-	depends_on = ["google_compute_firewall.dataproc_network_firewall"]
+  name       = "dproc-cluster-test-%s-name"
+  region     = "us-central1"
+  depends_on = [google_compute_firewall.dataproc_network_firewall]
 
-	cluster_config {
-		# Keep the costs down with smallest config we can get away with
-		software_config {
-			override_properties = {
-				"dataproc:dataproc.allow.zero.workers" = "true"
-			}
-		}
+  cluster_config {
+    # Keep the costs down with smallest config we can get away with
+    software_config {
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true"
+      }
+    }
 
-		master_config {
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
+    master_config {
+      machine_type = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
 
-		gce_cluster_config {
-			network = "${google_compute_network.dataproc_network.name}"
-		}
-	}
+    gce_cluster_config {
+      network = google_compute_network.dataproc_network.name
+    }
+  }
 }
 
 resource "google_dataproc_cluster" "with_net_ref_by_url" {
-	name   = "dproc-cluster-test-%s-url"
-	region = "us-central1"
-	depends_on = ["google_compute_firewall.dataproc_network_firewall"]
+  name       = "dproc-cluster-test-%s-url"
+  region     = "us-central1"
+  depends_on = [google_compute_firewall.dataproc_network_firewall]
 
-	cluster_config {
-		# Keep the costs down with smallest config we can get away with
-		software_config {
-			override_properties = {
-				"dataproc:dataproc.allow.zero.workers" = "true"
-			}
-		}
+  cluster_config {
+    # Keep the costs down with smallest config we can get away with
+    software_config {
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true"
+      }
+    }
 
-		master_config {
-			machine_type      = "n1-standard-1"
-			disk_config {
-				boot_disk_size_gb = 15
-			}
-		}
+    master_config {
+      machine_type = "n1-standard-1"
+      disk_config {
+        boot_disk_size_gb = 15
+      }
+    }
 
-		gce_cluster_config {
-			network = "${google_compute_network.dataproc_network.self_link}"
-		}
-	}
+    gce_cluster_config {
+      network = google_compute_network.dataproc_network.self_link
+    }
+  }
 }
-
 `, netName, rnd, rnd, rnd)
 }
 
 func testAccDataprocCluster_KMS(pid, rnd, kmsKey string) string {
 	return fmt.Sprintf(`
 data "google_project" "project" {
-	project_id = "%s"
+  project_id = "%s"
 }
 
 resource "google_project_iam_member" "kms-project-binding" {
-  project = "${data.google_project.project.project_id}"
-	role    = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-	member  = "serviceAccount:service-${data.google_project.project.number}@compute-system.iam.gserviceaccount.com"
+  project = data.google_project.project.project_id
+  role    = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member  = "serviceAccount:service-${data.google_project.project.number}@compute-system.iam.gserviceaccount.com"
 }
 
 resource "google_dataproc_cluster" "kms" {
-	name   = "dproc-cluster-test-%s"
-	region = "us-central1"
+  depends_on = [google_project_iam_member.kms-project-binding]
 
-	cluster_config {
-		encryption_config {
-			kms_key_name = "%s"
-		}
-	}
-}`, pid, rnd, kmsKey)
+  name   = "dproc-cluster-test-%s"
+  region = "us-central1"
+
+  cluster_config {
+    encryption_config {
+      kms_key_name = "%s"
+    }
+  }
+}
+`, pid, rnd, kmsKey)
 }

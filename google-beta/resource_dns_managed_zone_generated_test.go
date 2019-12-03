@@ -19,12 +19,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
-func TestAccDnsManagedZone_dnsManagedZoneBasicExample(t *testing.T) {
+func TestAccDNSManagedZone_dnsManagedZoneBasicExample(t *testing.T) {
 	t.Parallel()
 
 	context := map[string]interface{}{
@@ -34,10 +34,10 @@ func TestAccDnsManagedZone_dnsManagedZoneBasicExample(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckDnsManagedZoneDestroy,
+		CheckDestroy: testAccCheckDNSManagedZoneDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDnsManagedZone_dnsManagedZoneBasicExample(context),
+				Config: testAccDNSManagedZone_dnsManagedZoneBasicExample(context),
 			},
 			{
 				ResourceName:      "google_dns_managed_zone.example-zone",
@@ -48,11 +48,11 @@ func TestAccDnsManagedZone_dnsManagedZoneBasicExample(t *testing.T) {
 	})
 }
 
-func testAccDnsManagedZone_dnsManagedZoneBasicExample(context map[string]interface{}) string {
+func testAccDNSManagedZone_dnsManagedZoneBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_dns_managed_zone" "example-zone" {
-  name = "example-zone"
-  dns_name = "example-${random_id.rnd.hex}.com."
+  name        = "example-zone"
+  dns_name    = "example-${random_id.rnd.hex}.com."
   description = "Example DNS zone"
   labels = {
     foo = "bar"
@@ -65,7 +65,7 @@ resource "random_id" "rnd" {
 `, context)
 }
 
-func TestAccDnsManagedZone_dnsManagedZonePrivateExample(t *testing.T) {
+func TestAccDNSManagedZone_dnsManagedZonePrivateExample(t *testing.T) {
 	t.Parallel()
 
 	context := map[string]interface{}{
@@ -75,10 +75,10 @@ func TestAccDnsManagedZone_dnsManagedZonePrivateExample(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckDnsManagedZoneDestroy,
+		CheckDestroy: testAccCheckDNSManagedZoneDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDnsManagedZone_dnsManagedZonePrivateExample(context),
+				Config: testAccDNSManagedZone_dnsManagedZonePrivateExample(context),
 			},
 			{
 				ResourceName:      "google_dns_managed_zone.private-zone",
@@ -89,11 +89,11 @@ func TestAccDnsManagedZone_dnsManagedZonePrivateExample(t *testing.T) {
 	})
 }
 
-func testAccDnsManagedZone_dnsManagedZonePrivateExample(context map[string]interface{}) string {
+func testAccDNSManagedZone_dnsManagedZonePrivateExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_dns_managed_zone" "private-zone" {
-  name = "private-zone-%{random_suffix}"
-  dns_name = "private.example.com."
+  name        = "private-zone%{random_suffix}"
+  dns_name    = "private.example.com."
   description = "Example private DNS zone"
   labels = {
     foo = "bar"
@@ -103,27 +103,27 @@ resource "google_dns_managed_zone" "private-zone" {
 
   private_visibility_config {
     networks {
-      network_url =  "${google_compute_network.network-1.self_link}"
+      network_url = google_compute_network.network-1.self_link
     }
     networks {
-      network_url =  "${google_compute_network.network-2.self_link}"
+      network_url = google_compute_network.network-2.self_link
     }
   }
 }
 
 resource "google_compute_network" "network-1" {
-  name = "network-1-%{random_suffix}"
+  name                    = "network-1%{random_suffix}"
   auto_create_subnetworks = false
 }
 
 resource "google_compute_network" "network-2" {
-  name = "network-2-%{random_suffix}"
+  name                    = "network-2%{random_suffix}"
   auto_create_subnetworks = false
 }
 `, context)
 }
 
-func TestAccDnsManagedZone_dnsManagedZonePrivatePeeringExample(t *testing.T) {
+func TestAccDNSManagedZone_dnsManagedZonePrivatePeeringExample(t *testing.T) {
 	t.Parallel()
 
 	context := map[string]interface{}{
@@ -133,50 +133,50 @@ func TestAccDnsManagedZone_dnsManagedZonePrivatePeeringExample(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProvidersOiCS,
-		CheckDestroy: testAccCheckDnsManagedZoneDestroy,
+		CheckDestroy: testAccCheckDNSManagedZoneDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDnsManagedZone_dnsManagedZonePrivatePeeringExample(context),
+				Config: testAccDNSManagedZone_dnsManagedZonePrivatePeeringExample(context),
 			},
 		},
 	})
 }
 
-func testAccDnsManagedZone_dnsManagedZonePrivatePeeringExample(context map[string]interface{}) string {
+func testAccDNSManagedZone_dnsManagedZonePrivatePeeringExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_dns_managed_zone" "peering-zone" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name = "peering-zone-%{random_suffix}"
-  dns_name = "peering.example.com."
+  name        = "peering-zone%{random_suffix}"
+  dns_name    = "peering.example.com."
   description = "Example private DNS peering zone"
 
   visibility = "private"
 
   private_visibility_config {
     networks {
-      network_url =  "${google_compute_network.network-source.self_link}"
+      network_url = google_compute_network.network-source.self_link
     }
   }
 
   peering_config {
     target_network {
-      network_url = "${google_compute_network.network-target.self_link}"
+      network_url = google_compute_network.network-target.self_link
     }
   }
 }
 
 resource "google_compute_network" "network-source" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name = "network-source-%{random_suffix}"
+  name                    = "network-source%{random_suffix}"
   auto_create_subnetworks = false
 }
 
 resource "google_compute_network" "network-target" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name = "network-target-%{random_suffix}"
+  name                    = "network-target%{random_suffix}"
   auto_create_subnetworks = false
 }
 
@@ -187,7 +187,7 @@ provider "google-beta" {
 `, context)
 }
 
-func testAccCheckDnsManagedZoneDestroy(s *terraform.State) error {
+func testAccCheckDNSManagedZoneDestroy(s *terraform.State) error {
 	for name, rs := range s.RootModule().Resources {
 		if rs.Type != "google_dns_managed_zone" {
 			continue
@@ -198,14 +198,14 @@ func testAccCheckDnsManagedZoneDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/dns/v1beta2/projects/{{project}}/managedZones/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{DNSBasePath}}projects/{{project}}/managedZones/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
-			return fmt.Errorf("DnsManagedZone still exists at %s", url)
+			return fmt.Errorf("DNSManagedZone still exists at %s", url)
 		}
 	}
 

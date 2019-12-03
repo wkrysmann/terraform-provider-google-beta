@@ -12,18 +12,23 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Cloud Scheduler"
 layout: "google"
 page_title: "Google: google_cloud_scheduler_job"
 sidebar_current: "docs-google-cloud-scheduler-job"
 description: |-
   A scheduled job that can publish a pubsub message or a http request
-  every X interval of time, using crontab format string
+  every X interval of time, using crontab format string.
 ---
 
 # google\_cloud\_scheduler\_job
 
 A scheduled job that can publish a pubsub message or a http request
-every X interval of time, using crontab format string
+every X interval of time, using crontab format string.
+
+To use Cloud Scheduler your project must contain an App Engine app
+that is located in one of the supported regions. If your project
+does not have an App Engine app, you must create one.
 
 
 To get more information about Job, see:
@@ -46,13 +51,13 @@ resource "google_pubsub_topic" "topic" {
 }
 
 resource "google_cloud_scheduler_job" "job" {
-  name     = "test-job"
+  name        = "test-job"
   description = "test job"
-  schedule = "*/2 * * * *"
+  schedule    = "*/2 * * * *"
 
   pubsub_target {
-    topic_name = "${google_pubsub_topic.topic.id}"
-    data = "${base64encode("test")}"
+    topic_name = google_pubsub_topic.topic.id
+    data       = base64encode("test")
   }
 }
 ```
@@ -66,14 +71,14 @@ resource "google_cloud_scheduler_job" "job" {
 
 ```hcl
 resource "google_cloud_scheduler_job" "job" {
-  name     = "test-job"
+  name        = "test-job"
   description = "test http job"
-  schedule = "*/8 * * * *"
-  time_zone = "America/New_York"
+  schedule    = "*/8 * * * *"
+  time_zone   = "America/New_York"
 
   http_target {
     http_method = "POST"
-    uri = "https://example.com/ping"
+    uri         = "https://example.com/ping"
   }
 }
 ```
@@ -87,21 +92,77 @@ resource "google_cloud_scheduler_job" "job" {
 
 ```hcl
 resource "google_cloud_scheduler_job" "job" {
-  name     = "test-job"
-  schedule = "*/4 * * * *"
+  name        = "test-job"
+  schedule    = "*/4 * * * *"
   description = "test app engine job"
-  time_zone = "Europe/London"
+  time_zone   = "Europe/London"
 
   app_engine_http_target {
     http_method = "POST"
 
     app_engine_routing {
-      service = "web"
-      version = "prod"
+      service  = "web"
+      version  = "prod"
       instance = "my-instance-001"
     }
 
     relative_uri = "/ping"
+  }
+}
+```
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=scheduler_job_oauth&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Scheduler Job Oauth
+
+
+```hcl
+data "google_compute_default_service_account" "default" {
+}
+
+resource "google_cloud_scheduler_job" "job" {
+  name        = "test-job"
+  description = "test http job"
+  schedule    = "*/8 * * * *"
+  time_zone   = "America/New_York"
+
+  http_target {
+    http_method = "GET"
+    uri         = "https://cloudscheduler.googleapis.com/v1/projects/my-project-name/locations/us-west1/jobs"
+
+    oauth_token {
+      service_account_email = data.google_compute_default_service_account.default.email
+    }
+  }
+}
+```
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=scheduler_job_oidc&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Scheduler Job Oidc
+
+
+```hcl
+data "google_compute_default_service_account" "default" {
+}
+
+resource "google_cloud_scheduler_job" "job" {
+  name        = "test-job"
+  description = "test http job"
+  schedule    = "*/8 * * * *"
+  time_zone   = "America/New_York"
+
+  http_target {
+    http_method = "GET"
+    uri         = "https://example.com/ping"
+
+    oidc_token {
+      service_account_email = data.google_compute_default_service_account.default.email
+    }
   }
 }
 ```
@@ -283,6 +344,41 @@ The `http_target` block supports:
   This map contains the header field names and values. 
   Repeated headers are not supported, but a header value can contain commas.
 
+* `oauth_token` -
+  (Optional)
+  Contains information needed for generating an OAuth token.
+  This type of authorization should be used when sending requests to a GCP endpoint.  Structure is documented below.
+
+* `oidc_token` -
+  (Optional)
+  Contains information needed for generating an OpenID Connect token.
+  This type of authorization should be used when sending requests to third party endpoints or Cloud Run.  Structure is documented below.
+
+
+The `oauth_token` block supports:
+
+* `service_account_email` -
+  (Required)
+  Service account email to be used for generating OAuth token.
+  The service account must be within the same project as the job.
+
+* `scope` -
+  (Optional)
+  OAuth scope to be used for generating OAuth access token. If not specified,
+  "https://www.googleapis.com/auth/cloud-platform" will be used.
+
+The `oidc_token` block supports:
+
+* `service_account_email` -
+  (Required)
+  Service account email to be used for generating OAuth token.
+  The service account must be within the same project as the job.
+
+* `audience` -
+  (Optional)
+  Audience to be used when generating OIDC token. If not specified,
+  the URI specified in target will be used.
+
 
 ## Timeouts
 
@@ -299,8 +395,13 @@ Job can be imported using any of these accepted formats:
 ```
 $ terraform import google_cloud_scheduler_job.default projects/{{project}}/locations/{{region}}/jobs/{{name}}
 $ terraform import google_cloud_scheduler_job.default {{project}}/{{region}}/{{name}}
+$ terraform import google_cloud_scheduler_job.default {{region}}/{{name}}
 $ terraform import google_cloud_scheduler_job.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

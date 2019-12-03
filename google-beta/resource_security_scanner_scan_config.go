@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceSecurityScannerScanConfig() *schema.Resource {
@@ -38,19 +38,21 @@ func resourceSecurityScannerScanConfig() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(240 * time.Second),
-			Update: schema.DefaultTimeout(240 * time.Second),
-			Delete: schema.DefaultTimeout(240 * time.Second),
+			Create: schema.DefaultTimeout(4 * time.Minute),
+			Update: schema.DefaultTimeout(4 * time.Minute),
+			Delete: schema.DefaultTimeout(4 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
 			"display_name": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: `The user provider display name of the ScanConfig.`,
 			},
 			"starting_urls": {
-				Type:     schema.TypeList,
-				Required: true,
+				Type:        schema.TypeList,
+				Required:    true,
+				Description: `The starting URLs from which the scanner finds site pages.`,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -58,50 +60,63 @@ func resourceSecurityScannerScanConfig() *schema.Resource {
 			"authentication": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Description: `The authentication configuration.
+If specified, service will use the authentication configuration during scanning.`,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"custom_account": {
-							Type:     schema.TypeList,
-							Optional: true,
-							MaxItems: 1,
+							Type:        schema.TypeList,
+							Optional:    true,
+							Description: `Describes authentication configuration that uses a custom account.`,
+							MaxItems:    1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"login_url": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: `The login form URL of the website.`,
 									},
 									"password": {
-										Type:      schema.TypeString,
-										Required:  true,
-										ForceNew:  true,
+										Type:     schema.TypeString,
+										Required: true,
+										ForceNew: true,
+										Description: `The password of the custom account. The credential is stored encrypted
+in GCP.`,
 										Sensitive: true,
 									},
 									"username": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: `The user name of the custom account.`,
 									},
 								},
 							},
+							AtLeastOneOf: []string{"authentication.0.google_account", "authentication.0.custom_account"},
 						},
 						"google_account": {
-							Type:     schema.TypeList,
-							Optional: true,
-							MaxItems: 1,
+							Type:        schema.TypeList,
+							Optional:    true,
+							Description: `Describes authentication configuration that uses a Google account.`,
+							MaxItems:    1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"password": {
-										Type:      schema.TypeString,
-										Required:  true,
-										ForceNew:  true,
+										Type:     schema.TypeString,
+										Required: true,
+										ForceNew: true,
+										Description: `The password of the Google account. The credential is stored encrypted
+in GCP.`,
 										Sensitive: true,
 									},
 									"username": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: `The user name of the Google account.`,
 									},
 								},
 							},
+							AtLeastOneOf: []string{"authentication.0.google_account", "authentication.0.custom_account"},
 						},
 					},
 				},
@@ -109,6 +124,8 @@ func resourceSecurityScannerScanConfig() *schema.Resource {
 			"blacklist_patterns": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Description: `The blacklist URL patterns as described in
+https://cloud.google.com/security-scanner/docs/excluded-urls`,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -117,34 +134,43 @@ func resourceSecurityScannerScanConfig() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ValidateFunc: validation.StringInSlice([]string{"ENABLED", "DISABLED", ""}, false),
+				Description:  `Controls export of scan configurations and results to Cloud Security Command Center.`,
 				Default:      "ENABLED",
 			},
 			"max_qps": {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				ValidateFunc: validation.IntBetween(5, 20),
-				Default:      15,
+				Description: `The maximum QPS during scanning. A valid value ranges from 5 to 20 inclusively.
+Defaults to 15.`,
+				Default: 15,
 			},
 			"schedule": {
-				Type:     schema.TypeList,
-				Optional: true,
-				MaxItems: 1,
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: `The schedule of the ScanConfig`,
+				MaxItems:    1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"interval_duration_days": {
-							Type:     schema.TypeInt,
-							Required: true,
+							Type:        schema.TypeInt,
+							Required:    true,
+							Description: `The duration of time between executions in days`,
 						},
 						"schedule_time": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Description: `A timestamp indicates when the next run will be scheduled. The value is refreshed
+by the server after each run. If unspecified, it will default to current server time,
+which means the scan will be scheduled to start immediately.`,
 						},
 					},
 				},
 			},
 			"target_platforms": {
-				Type:     schema.TypeList,
-				Optional: true,
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: `Set of Cloud Platforms targeted by the scan. If empty, APP_ENGINE will be used as a default.`,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -153,11 +179,14 @@ func resourceSecurityScannerScanConfig() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ValidateFunc: validation.StringInSlice([]string{"USER_AGENT_UNSPECIFIED", "CHROME_LINUX", "CHROME_ANDROID", "SAFARI_IPHONE", ""}, false),
+				Description:  `Type of the user agents used for scanning`,
 				Default:      "CHROME_LINUX",
 			},
 			"name": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Description: `A server defined name for this index. Format:
+'projects/{{project}}/scanConfigs/{{server_generated_id}}'`,
 			},
 			"project": {
 				Type:     schema.TypeString,
@@ -228,13 +257,17 @@ func resourceSecurityScannerScanConfigCreate(d *schema.ResourceData, meta interf
 		obj["exportToSecurityCommandCenter"] = exportToSecurityCommandCenterProp
 	}
 
-	url, err := replaceVars(d, config, "https://websecurityscanner.googleapis.com/v1beta/projects/{{project}}/scanConfigs")
+	url, err := replaceVars(d, config, "{{SecurityScannerBasePath}}projects/{{project}}/scanConfigs")
 	if err != nil {
 		return err
 	}
 
 	log.Printf("[DEBUG] Creating new ScanConfig: %#v", obj)
-	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating ScanConfig: %s", err)
 	}
@@ -262,20 +295,20 @@ func resourceSecurityScannerScanConfigCreate(d *schema.ResourceData, meta interf
 func resourceSecurityScannerScanConfigRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://websecurityscanner.googleapis.com/v1beta/{{name}}")
+	url, err := replaceVars(d, config, "{{SecurityScannerBasePath}}{{name}}")
 	if err != nil {
 		return err
-	}
-
-	res, err := sendRequest(config, "GET", url, nil)
-	if err != nil {
-		return handleNotFoundError(err, d, fmt.Sprintf("SecurityScannerScanConfig %q", d.Id()))
 	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
+	res, err := sendRequest(config, "GET", project, url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("SecurityScannerScanConfig %q", d.Id()))
+	}
+
 	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading ScanConfig: %s", err)
 	}
@@ -316,6 +349,11 @@ func resourceSecurityScannerScanConfigRead(d *schema.ResourceData, meta interfac
 
 func resourceSecurityScannerScanConfigUpdate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
+
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
 
 	obj := make(map[string]interface{})
 	displayNameProp, err := expandSecurityScannerScanConfigDisplayName(d.Get("display_name"), d, config)
@@ -373,7 +411,7 @@ func resourceSecurityScannerScanConfigUpdate(d *schema.ResourceData, meta interf
 		obj["exportToSecurityCommandCenter"] = exportToSecurityCommandCenterProp
 	}
 
-	url, err := replaceVars(d, config, "https://websecurityscanner.googleapis.com/v1beta/{{name}}")
+	url, err := replaceVars(d, config, "{{SecurityScannerBasePath}}{{name}}")
 	if err != nil {
 		return err
 	}
@@ -422,7 +460,7 @@ func resourceSecurityScannerScanConfigUpdate(d *schema.ResourceData, meta interf
 	if err != nil {
 		return err
 	}
-	_, err = sendRequestWithTimeout(config, "PATCH", url, obj, d.Timeout(schema.TimeoutUpdate))
+	_, err = sendRequestWithTimeout(config, "PATCH", project, url, obj, d.Timeout(schema.TimeoutUpdate))
 
 	if err != nil {
 		return fmt.Errorf("Error updating ScanConfig %q: %s", d.Id(), err)
@@ -434,14 +472,20 @@ func resourceSecurityScannerScanConfigUpdate(d *schema.ResourceData, meta interf
 func resourceSecurityScannerScanConfigDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://websecurityscanner.googleapis.com/v1beta/{{name}}")
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{SecurityScannerBasePath}}{{name}}")
 	if err != nil {
 		return err
 	}
 
 	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting ScanConfig %q", d.Id())
-	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
+
+	res, err := sendRequestWithTimeout(config, "DELETE", project, url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "ScanConfig")
 	}
@@ -519,7 +563,7 @@ func flattenSecurityScannerScanConfigAuthenticationGoogleAccountUsername(v inter
 }
 
 func flattenSecurityScannerScanConfigAuthenticationGoogleAccountPassword(v interface{}, d *schema.ResourceData) interface{} {
-	return v
+	return d.Get("authentication.0.custom_account.0.password")
 }
 
 func flattenSecurityScannerScanConfigAuthenticationCustomAccount(v interface{}, d *schema.ResourceData) interface{} {
@@ -544,7 +588,7 @@ func flattenSecurityScannerScanConfigAuthenticationCustomAccountUsername(v inter
 }
 
 func flattenSecurityScannerScanConfigAuthenticationCustomAccountPassword(v interface{}, d *schema.ResourceData) interface{} {
-	return v
+	return d.Get("authentication.0.google_account.0.password")
 }
 
 func flattenSecurityScannerScanConfigAuthenticationCustomAccountLoginUrl(v interface{}, d *schema.ResourceData) interface{} {

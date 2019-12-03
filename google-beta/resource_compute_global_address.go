@@ -21,9 +21,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
-	"google.golang.org/api/compute/v1"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceComputeGlobalAddress() *schema.Resource {
@@ -38,9 +37,9 @@ func resourceComputeGlobalAddress() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(240 * time.Second),
-			Update: schema.DefaultTimeout(240 * time.Second),
-			Delete: schema.DefaultTimeout(240 * time.Second),
+			Create: schema.DefaultTimeout(4 * time.Minute),
+			Update: schema.DefaultTimeout(4 * time.Minute),
+			Delete: schema.DefaultTimeout(4 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -48,12 +47,22 @@ func resourceComputeGlobalAddress() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
+				Description: `Name of the resource. Provided by the client when the resource is
+created. The name must be 1-63 characters long, and comply with
+RFC1035.  Specifically, the name must be 1-63 characters long and
+match the regular expression '[a-z]([-a-z0-9]*[a-z0-9])?' which means
+the first character must be a lowercase letter, and all following
+characters must be a dash, lowercase letter, or digit, except the last
+character, which cannot be a dash.`,
 			},
 			"address": {
 				Type:     schema.TypeString,
 				Computed: true,
 				Optional: true,
 				ForceNew: true,
+				Description: `The IP address or beginning of the address range represented by this
+resource. This can be supplied as an input to reserve a specific
+address or omitted to allow GCP to choose a valid one for you.`,
 			},
 			"address_type": {
 				Type:             schema.TypeString,
@@ -61,12 +70,17 @@ func resourceComputeGlobalAddress() *schema.Resource {
 				ForceNew:         true,
 				ValidateFunc:     validation.StringInSlice([]string{"EXTERNAL", "INTERNAL", ""}, false),
 				DiffSuppressFunc: emptyOrDefaultStringSuppress("EXTERNAL"),
-				Default:          "EXTERNAL",
+				Description: `The type of the address to reserve, default is EXTERNAL.
+
+* EXTERNAL indicates public/external single IP address.
+* INTERNAL indicates internal IP ranges belonging to some network.`,
+				Default: "EXTERNAL",
 			},
 			"description": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `An optional description of this resource.`,
 			},
 			"ip_version": {
 				Type:             schema.TypeString,
@@ -74,36 +88,56 @@ func resourceComputeGlobalAddress() *schema.Resource {
 				ForceNew:         true,
 				ValidateFunc:     validation.StringInSlice([]string{"IPV4", "IPV6", ""}, false),
 				DiffSuppressFunc: emptyOrDefaultStringSuppress("IPV4"),
+				Description: `The IP Version that will be used by this address. Valid options are
+'IPV4' or 'IPV6'. The default value is 'IPV4'.`,
 			},
 			"labels": {
-				Type:     schema.TypeMap,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Description: `Labels to apply to this address.  A list of key->value pairs.`,
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"network": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				ForceNew:         true,
 				DiffSuppressFunc: compareSelfLinkOrResourceName,
+				Description: `The URL of the network in which to reserve the IP range. The IP range
+must be in RFC1918 space. The network cannot be deleted if there are
+any reserved IP ranges referring to it.
+
+This should only be set when using an Internal address.`,
 			},
 			"prefix_length": {
 				Type:     schema.TypeInt,
 				Optional: true,
 				ForceNew: true,
+				Description: `The prefix length of the IP range. If not present, it means the
+address field is a single IP address.
+
+This field is not applicable to addresses with addressType=EXTERNAL.`,
 			},
 			"purpose": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ForceNew:     true,
 				ValidateFunc: validation.StringInSlice([]string{"VPC_PEERING", ""}, false),
+				Description: `The purpose of the resource. For global internal addresses it can be
+
+* VPC_PEERING - for peer networks
+
+This should only be set when using an Internal address.`,
 			},
 			"creation_timestamp": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `Creation timestamp in RFC3339 text format.`,
 			},
 			"label_fingerprint": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Description: `The fingerprint used for optimistic locking of this resource.  Used
+internally during updates.`,
 			},
 			"project": {
 				Type:     schema.TypeString,
@@ -184,42 +218,36 @@ func resourceComputeGlobalAddressCreate(d *schema.ResourceData, meta interface{}
 		obj["network"] = networkProp
 	}
 
-	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/addresses")
+	url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/addresses")
 	if err != nil {
 		return err
 	}
 
 	log.Printf("[DEBUG] Creating new GlobalAddress: %#v", obj)
-	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating GlobalAddress: %s", err)
 	}
 
 	// Store the ID now
-	id, err := replaceVars(d, config, "{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/global/addresses/{{name}}")
 	if err != nil {
 		return fmt.Errorf("Error constructing id: %s", err)
 	}
 	d.SetId(id)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-	op := &compute.Operation{}
-	err = Convert(res, op)
-	if err != nil {
-		return err
-	}
-
-	waitErr := computeOperationWaitTime(
-		config.clientCompute, op, project, "Creating GlobalAddress",
+	err = computeOperationWaitTime(
+		config, res, project, "Creating GlobalAddress",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if waitErr != nil {
+	if err != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create GlobalAddress: %s", waitErr)
+		return fmt.Errorf("Error waiting to create GlobalAddress: %s", err)
 	}
 
 	log.Printf("[DEBUG] Finished creating GlobalAddress %q: %#v", d.Id(), res)
@@ -241,22 +269,17 @@ func resourceComputeGlobalAddressCreate(d *schema.ResourceData, meta interface{}
 		labelFingerprintProp := d.Get("label_fingerprint")
 		obj["labelFingerprint"] = labelFingerprintProp
 
-		url, err = replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/addresses/{{name}}/setLabels")
+		url, err = replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/addresses/{{name}}/setLabels")
 		if err != nil {
 			return err
 		}
-		res, err = sendRequest(config, "POST", url, obj)
+		res, err = sendRequest(config, "POST", project, url, obj)
 		if err != nil {
 			return fmt.Errorf("Error adding labels to ComputeGlobalAddress %q: %s", d.Id(), err)
 		}
 
-		err = Convert(res, op)
-		if err != nil {
-			return err
-		}
-
 		err = computeOperationWaitTime(
-			config.clientCompute, op, project, "Updating ComputeGlobalAddress Labels",
+			config, res, project, "Updating ComputeGlobalAddress Labels",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 		if err != nil {
@@ -271,20 +294,20 @@ func resourceComputeGlobalAddressCreate(d *schema.ResourceData, meta interface{}
 func resourceComputeGlobalAddressRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/addresses/{{name}}")
+	url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/addresses/{{name}}")
 	if err != nil {
 		return err
-	}
-
-	res, err := sendRequest(config, "GET", url, nil)
-	if err != nil {
-		return handleNotFoundError(err, d, fmt.Sprintf("ComputeGlobalAddress %q", d.Id()))
 	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
+	res, err := sendRequest(config, "GET", project, url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("ComputeGlobalAddress %q", d.Id()))
+	}
+
 	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading GlobalAddress: %s", err)
 	}
@@ -332,10 +355,16 @@ func resourceComputeGlobalAddressRead(d *schema.ResourceData, meta interface{}) 
 func resourceComputeGlobalAddressUpdate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
 	d.Partial(true)
 
 	if d.HasChange("labels") || d.HasChange("label_fingerprint") {
 		obj := make(map[string]interface{})
+
 		labelsProp, err := expandComputeGlobalAddressLabels(d.Get("labels"), d, config)
 		if err != nil {
 			return err
@@ -349,29 +378,18 @@ func resourceComputeGlobalAddressUpdate(d *schema.ResourceData, meta interface{}
 			obj["labelFingerprint"] = labelFingerprintProp
 		}
 
-		url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/addresses/{{name}}/setLabels")
+		url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/addresses/{{name}}/setLabels")
 		if err != nil {
 			return err
 		}
-		res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutUpdate))
+		res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
 			return fmt.Errorf("Error updating GlobalAddress %q: %s", d.Id(), err)
 		}
 
-		project, err := getProject(d, config)
-		if err != nil {
-			return err
-		}
-		op := &compute.Operation{}
-		err = Convert(res, op)
-		if err != nil {
-			return err
-		}
-
 		err = computeOperationWaitTime(
-			config.clientCompute, op, project, "Updating GlobalAddress",
+			config, res, project, "Updating GlobalAddress",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
-
 		if err != nil {
 			return err
 		}
@@ -388,30 +406,26 @@ func resourceComputeGlobalAddressUpdate(d *schema.ResourceData, meta interface{}
 func resourceComputeGlobalAddressDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/addresses/{{name}}")
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/addresses/{{name}}")
 	if err != nil {
 		return err
 	}
 
 	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting GlobalAddress %q", d.Id())
-	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
+
+	res, err := sendRequestWithTimeout(config, "DELETE", project, url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "GlobalAddress")
 	}
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-	op := &compute.Operation{}
-	err = Convert(res, op)
-	if err != nil {
-		return err
-	}
-
 	err = computeOperationWaitTime(
-		config.clientCompute, op, project, "Deleting GlobalAddress",
+		config, res, project, "Deleting GlobalAddress",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {
@@ -424,12 +438,16 @@ func resourceComputeGlobalAddressDelete(d *schema.ResourceData, meta interface{}
 
 func resourceComputeGlobalAddressImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*Config)
-	if err := parseImportId([]string{"projects/(?P<project>[^/]+)/global/addresses/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+	if err := parseImportId([]string{
+		"projects/(?P<project>[^/]+)/global/addresses/(?P<name>[^/]+)",
+		"(?P<project>[^/]+)/(?P<name>[^/]+)",
+		"(?P<name>[^/]+)",
+	}, d, config); err != nil {
 		return nil, err
 	}
 
 	// Replace import id for the resource id
-	id, err := replaceVars(d, config, "{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/global/addresses/{{name}}")
 	if err != nil {
 		return nil, fmt.Errorf("Error constructing id: %s", err)
 	}

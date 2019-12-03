@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Compute Engine"
 layout: "google"
 page_title: "Google: google_compute_network_endpoint_group"
 sidebar_current: "docs-google-compute-network-endpoint-group"
@@ -34,8 +35,6 @@ backend with internal load balancers. Because NEG backends allow you to
 specify IP addresses and ports, you can distribute traffic in a granular
 fashion among applications or containers running within VM instances.
 
-~> **Warning:** This resource is in beta, and should be used with the terraform-provider-google-beta provider.
-See [Provider Versions](https://terraform.io/docs/providers/google/provider_versions.html) for more details on beta resources.
 
 To get more information about NetworkEndpointGroup, see:
 
@@ -53,34 +52,23 @@ To get more information about NetworkEndpointGroup, see:
 
 ```hcl
 resource "google_compute_network_endpoint_group" "neg" {
-  provider = "google-beta"
-
   name         = "my-lb-neg"
-  network      = "${google_compute_network.default.self_link}"
-  subnetwork   = "${google_compute_subnetwork.default.self_link}"
+  network      = google_compute_network.default.self_link
+  subnetwork   = google_compute_subnetwork.default.self_link
   default_port = "90"
   zone         = "us-central1-a"
 }
 
 resource "google_compute_network" "default" {
-  provider = "google-beta"
-
-  name = "neg-network"
+  name                    = "neg-network"
   auto_create_subnetworks = false
 }
 
 resource "google_compute_subnetwork" "default" {
-  provider = "google-beta"
-
   name          = "neg-subnetwork"
   ip_cidr_range = "10.0.0.0/16"
   region        = "us-central1"
-  network       = "${google_compute_network.default.self_link}"
-}
-
-provider "google-beta" {
-  region = "us-central1"
-  zone   = "us-central1-a"
+  network       = google_compute_network.default.self_link
 }
 ```
 
@@ -142,6 +130,7 @@ In addition to the arguments listed above, the following computed attributes are
 
 * `size` -
   Number of network endpoints in the network endpoint group.
+* `self_link` - The URI of the created resource.
 
 
 ## Timeouts
@@ -157,10 +146,15 @@ This resource provides the following
 NetworkEndpointGroup can be imported using any of these accepted formats:
 
 ```
-$ terraform import -provider=google-beta google_compute_network_endpoint_group.default projects/{{project}}/zones/{{zone}}/networkEndpointGroups/{{name}}
-$ terraform import -provider=google-beta google_compute_network_endpoint_group.default {{project}}/{{zone}}/{{name}}
-$ terraform import -provider=google-beta google_compute_network_endpoint_group.default {{name}}
+$ terraform import google_compute_network_endpoint_group.default projects/{{project}}/zones/{{zone}}/networkEndpointGroups/{{name}}
+$ terraform import google_compute_network_endpoint_group.default {{project}}/{{zone}}/{{name}}
+$ terraform import google_compute_network_endpoint_group.default {{zone}}/{{name}}
+$ terraform import google_compute_network_endpoint_group.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

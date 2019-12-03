@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Binary Authorization"
 layout: "google"
 page_title: "Google: google_binary_authorization_policy"
 sidebar_current: "docs-google-binary-authorization-policy"
@@ -23,8 +24,6 @@ description: |-
 
 A policy for container image binary authorization.
 
-~> **Warning:** This resource is in beta, and should be used with the terraform-provider-google-beta provider.
-See [Provider Versions](https://terraform.io/docs/providers/google/provider_versions.html) for more details on beta resources.
 
 To get more information about Policy, see:
 
@@ -38,19 +37,19 @@ To get more information about Policy, see:
 ```hcl
 resource "google_binary_authorization_policy" "policy" {
   admission_whitelist_patterns {
-    name_pattern= "gcr.io/google_containers/*"
+    name_pattern = "gcr.io/google_containers/*"
   }
 
   default_admission_rule {
-    evaluation_mode = "ALWAYS_ALLOW"
+    evaluation_mode  = "ALWAYS_ALLOW"
     enforcement_mode = "ENFORCED_BLOCK_AND_AUDIT_LOG"
   }
 
   cluster_admission_rules {
-    cluster = "us-central1-a.prod-cluster"
-    evaluation_mode = "REQUIRE_ATTESTATION"
-    enforcement_mode = "ENFORCED_BLOCK_AND_AUDIT_LOG"
-    require_attestations_by = ["${google_binary_authorization_attestor.attestor.name}"]
+    cluster                 = "us-central1-a.prod-cluster"
+    evaluation_mode         = "REQUIRE_ATTESTATION"
+    enforcement_mode        = "ENFORCED_BLOCK_AND_AUDIT_LOG"
+    require_attestations_by = [google_binary_authorization_attestor.attestor.name]
   }
 }
 
@@ -66,7 +65,37 @@ resource "google_container_analysis_note" "note" {
 resource "google_binary_authorization_attestor" "attestor" {
   name = "test-attestor"
   attestation_authority_note {
-    note_reference = "${google_container_analysis_note.note.name}"
+    note_reference = google_container_analysis_note.note.name
+  }
+}
+```
+## Example Usage - Binary Authorization Policy Global Evaluation
+
+
+```hcl
+resource "google_binary_authorization_policy" "policy" {
+  default_admission_rule {
+    evaluation_mode         = "REQUIRE_ATTESTATION"
+    enforcement_mode        = "ENFORCED_BLOCK_AND_AUDIT_LOG"
+    require_attestations_by = [google_binary_authorization_attestor.attestor.name]
+  }
+
+  global_policy_evaluation_mode = "ENABLE"
+}
+
+resource "google_container_analysis_note" "note" {
+  name = "test-attestor-note"
+  attestation_authority {
+    hint {
+      human_readable_name = "My attestor"
+    }
+  }
+}
+
+resource "google_binary_authorization_attestor" "attestor" {
+  name = "test-attestor"
+  attestation_authority_note {
+    note_reference = google_container_analysis_note.note.name
   }
 }
 ```
@@ -110,6 +139,12 @@ The `default_admission_rule` block supports:
   (Optional)
   A descriptive comment.
 
+* `global_policy_evaluation_mode` -
+  (Optional)
+  Controls the evaluation of a Google-maintained global admission policy
+  for common system-level images. Images not covered by the global
+  policy will be subject to the project admission policy.
+
 * `admission_whitelist_patterns` -
   (Optional)
   A whitelist of image patterns to exclude from admission rules. If an
@@ -135,7 +170,7 @@ The `default_admission_rule` block supports:
 The `admission_whitelist_patterns` block supports:
 
 * `name_pattern` -
-  (Optional)
+  (Required)
   An image name pattern to whitelist, in the form
   `registry/path/to/image`. This supports a trailing * as a
   wildcard, but this is allowed only in text after the registry/
@@ -146,7 +181,7 @@ The `cluster_admission_rules` block supports:
 * `cluster` - (Required) The identifier for this object. Format specified above.
 
 * `evaluation_mode` -
-  (Optional)
+  (Required)
   How this admission rule will be evaluated.
 
 * `require_attestations_by` -
@@ -161,7 +196,7 @@ The `cluster_admission_rules` block supports:
   specifies REQUIRE_ATTESTATION, otherwise it must be empty.
 
 * `enforcement_mode` -
-  (Optional)
+  (Required)
   The action when a pod creation is denied by the admission rule.
 
 
@@ -179,9 +214,13 @@ This resource provides the following
 Policy can be imported using any of these accepted formats:
 
 ```
-$ terraform import -provider=google-beta google_binary_authorization_policy.default projects/{{project}}
-$ terraform import -provider=google-beta google_binary_authorization_policy.default {{project}}
+$ terraform import google_binary_authorization_policy.default projects/{{project}}
+$ terraform import google_binary_authorization_policy.default {{project}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

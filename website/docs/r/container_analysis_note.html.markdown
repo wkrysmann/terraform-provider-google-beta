@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Container Registry"
 layout: "google"
 page_title: "Google: google_container_analysis_note"
 sidebar_current: "docs-google-container-analysis-note"
@@ -23,8 +24,6 @@ description: |-
 
 Provides a detailed description of a Note.
 
-~> **Warning:** This resource is in beta, and should be used with the terraform-provider-google-beta provider.
-See [Provider Versions](https://terraform.io/docs/providers/google/provider_versions.html) for more details on beta resources.
 
 To get more information about Note, see:
 
@@ -42,19 +41,12 @@ To get more information about Note, see:
 
 ```hcl
 resource "google_container_analysis_note" "note" {
-  provider = "google-beta"
-
   name = "test-attestor-note"
   attestation_authority {
     hint {
       human_readable_name = "Attestor Note"
     }
   }
-}
-
-provider "google-beta"{
-  region = "us-central1"
-  zone   = "us-central1-a"
 }
 ```
 
@@ -123,10 +115,14 @@ This resource provides the following
 Note can be imported using any of these accepted formats:
 
 ```
-$ terraform import -provider=google-beta google_container_analysis_note.default projects/{{project}}/notes/{{name}}
-$ terraform import -provider=google-beta google_container_analysis_note.default {{project}}/{{name}}
-$ terraform import -provider=google-beta google_container_analysis_note.default {{name}}
+$ terraform import google_container_analysis_note.default projects/{{project}}/notes/{{name}}
+$ terraform import google_container_analysis_note.default {{project}}/{{name}}
+$ terraform import google_container_analysis_note.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccFilestoreInstance_filestoreInstanceBasicExample(t *testing.T) {
@@ -52,7 +52,7 @@ func TestAccFilestoreInstance_filestoreInstanceBasicExample(t *testing.T) {
 func testAccFilestoreInstance_filestoreInstanceBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_filestore_instance" "instance" {
-  name = "test-instance-%{random_suffix}"
+  name = "test-instance%{random_suffix}"
   zone = "us-central1-b"
   tier = "PREMIUM"
 
@@ -80,12 +80,12 @@ func testAccCheckFilestoreInstanceDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://file.googleapis.com/v1/projects/{{project}}/locations/{{zone}}/instances/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{FilestoreBasePath}}projects/{{project}}/locations/{{zone}}/instances/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("FilestoreInstance still exists at %s", url)
 		}

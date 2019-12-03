@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Compute Engine"
 layout: "google"
 page_title: "Google: google_compute_url_map"
 sidebar_current: "docs-google-compute-url-map"
@@ -40,7 +41,7 @@ resource "google_compute_url_map" "urlmap" {
   name        = "urlmap"
   description = "a description"
 
-  default_service = "${google_compute_backend_service.home.self_link}"
+  default_service = google_compute_backend_service.home.self_link
 
   host_rule {
     hosts        = ["mysite.com"]
@@ -49,26 +50,26 @@ resource "google_compute_url_map" "urlmap" {
 
   path_matcher {
     name            = "allpaths"
-    default_service = "${google_compute_backend_service.home.self_link}"
+    default_service = google_compute_backend_service.home.self_link
 
     path_rule {
       paths   = ["/home"]
-      service = "${google_compute_backend_service.home.self_link}"
+      service = google_compute_backend_service.home.self_link
     }
 
     path_rule {
       paths   = ["/login"]
-      service = "${google_compute_backend_service.login.self_link}"
+      service = google_compute_backend_service.login.self_link
     }
 
     path_rule {
       paths   = ["/static"]
-      service = "${google_compute_backend_bucket.static.self_link}"
+      service = google_compute_backend_bucket.static.self_link
     }
   }
 
   test {
-    service = "${google_compute_backend_service.home.self_link}"
+    service = google_compute_backend_service.home.self_link
     host    = "hi.com"
     path    = "/home"
   }
@@ -80,7 +81,7 @@ resource "google_compute_backend_service" "login" {
   protocol    = "HTTP"
   timeout_sec = 10
 
-  health_checks = ["${google_compute_http_health_check.default.self_link}"]
+  health_checks = [google_compute_http_health_check.default.self_link]
 }
 
 resource "google_compute_backend_service" "home" {
@@ -89,7 +90,7 @@ resource "google_compute_backend_service" "home" {
   protocol    = "HTTP"
   timeout_sec = 10
 
-  health_checks = ["${google_compute_http_health_check.default.self_link}"]
+  health_checks = [google_compute_http_health_check.default.self_link]
 }
 
 resource "google_compute_http_health_check" "default" {
@@ -101,7 +102,7 @@ resource "google_compute_http_health_check" "default" {
 
 resource "google_compute_backend_bucket" "static" {
   name        = "static-asset-backend-bucket"
-  bucket_name = "${google_storage_bucket.static.name}"
+  bucket_name = google_storage_bucket.static.name
   enable_cdn  = true
 }
 
@@ -264,3 +265,7 @@ $ terraform import google_compute_url_map.default {{name}}
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

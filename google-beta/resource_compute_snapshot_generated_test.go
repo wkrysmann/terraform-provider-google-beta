@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeSnapshot_snapshotBasicExample(t *testing.T) {
@@ -52,25 +52,25 @@ func TestAccComputeSnapshot_snapshotBasicExample(t *testing.T) {
 func testAccComputeSnapshot_snapshotBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_snapshot" "snapshot" {
-	name = "my-snapshot-%{random_suffix}"
-	source_disk = "${google_compute_disk.persistent.name}"
-	zone = "us-central1-a"
-	labels = {
-		my_label = "value"
-	}
+  name        = "my-snapshot%{random_suffix}"
+  source_disk = google_compute_disk.persistent.name
+  zone        = "us-central1-a"
+  labels = {
+    my_label = "value"
+  }
 }
 
 data "google_compute_image" "debian" {
-	family  = "debian-9"
-	project = "debian-cloud"
+  family  = "debian-9"
+  project = "debian-cloud"
 }
 
 resource "google_compute_disk" "persistent" {
-	name = "debian-disk-%{random_suffix}"
-	image = "${data.google_compute_image.debian.self_link}"
-	size = 10
-	type = "pd-ssd"
-	zone = "us-central1-a"
+  name  = "debian-disk%{random_suffix}"
+  image = data.google_compute_image.debian.self_link
+  size  = 10
+  type  = "pd-ssd"
+  zone  = "us-central1-a"
 }
 `, context)
 }
@@ -86,12 +86,12 @@ func testAccCheckComputeSnapshotDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/snapshots/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/global/snapshots/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeSnapshot still exists at %s", url)
 		}

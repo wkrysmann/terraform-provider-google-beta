@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeGlobalAddress_globalAddressBasicExample(t *testing.T) {
@@ -51,7 +51,7 @@ func TestAccComputeGlobalAddress_globalAddressBasicExample(t *testing.T) {
 func testAccComputeGlobalAddress_globalAddressBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_global_address" "default" {
-  name = "global-appserver-ip-%{random_suffix}"
+  name = "global-appserver-ip%{random_suffix}"
 }
 `, context)
 }
@@ -67,12 +67,12 @@ func testAccCheckComputeGlobalAddressDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/addresses/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/global/addresses/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeGlobalAddress still exists at %s", url)
 		}

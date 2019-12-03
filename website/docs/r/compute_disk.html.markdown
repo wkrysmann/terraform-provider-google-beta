@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Compute Engine"
 layout: "google"
 page_title: "Google: google_compute_disk"
 sidebar_current: "docs-google-compute-disk"
@@ -101,11 +102,11 @@ The following arguments are supported:
 * `size` -
   (Optional)
   Size of the persistent disk, specified in GB. You can specify this
-  field when creating a persistent disk using the sourceImage or
-  sourceSnapshot parameter, or specify it alone to create an empty
+  field when creating a persistent disk using the `image` or
+  `snapshot` parameter, or specify it alone to create an empty
   persistent disk.
-  If you specify this field along with sourceImage or sourceSnapshot,
-  the value of sizeGb must not be less than the size of the sourceImage
+  If you specify this field along with `image` or `snapshot`,
+  the value must not be less than the size of the image
   or the size of the snapshot.
 
 * `physical_block_size_bytes` -
@@ -133,6 +134,10 @@ The following arguments are supported:
   For instance, the image `centos-6-v20180104` includes its family name `centos-6`.
   These images can be referred by family name here.
 
+* `resource_policies` -
+  (Optional, [Beta](https://terraform.io/docs/providers/google/guides/provider_versions.html))
+  Resource policies applied to this disk for automatic snapshot creations.
+
 * `zone` -
   (Optional)
   A reference to the zone where the disk resides.
@@ -157,8 +162,9 @@ The following arguments are supported:
 * `snapshot` -
   (Optional)
   The source snapshot used to create this disk. You can provide this as
-  a partial or full URL to the resource. For example, the following are
-  valid values:
+  a partial or full URL to the resource. If the snapshot is in another
+  project than this disk, you must supply a full URL. For example, the
+  following are valid values:
   * `https://www.googleapis.com/compute/v1/projects/project/global/snapshots/snapshot`
   * `projects/project/global/snapshots/snapshot`
   * `global/snapshots/snapshot`
@@ -244,7 +250,7 @@ In addition to the arguments listed above, the following computed attributes are
   Last attach timestamp in RFC3339 text format.
 
 * `last_detach_timestamp` -
-  Last dettach timestamp in RFC3339 text format.
+  Last detach timestamp in RFC3339 text format.
 
 * `users` -
   Links to the users of the disk (attached instances) in form:
@@ -283,8 +289,13 @@ Disk can be imported using any of these accepted formats:
 ```
 $ terraform import google_compute_disk.default projects/{{project}}/zones/{{zone}}/disks/{{name}}
 $ terraform import google_compute_disk.default {{project}}/{{zone}}/{{name}}
+$ terraform import google_compute_disk.default {{zone}}/{{name}}
 $ terraform import google_compute_disk.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Cloud Filestore"
 layout: "google"
 page_title: "Google: google_filestore_instance"
 sidebar_current: "docs-google-filestore-instance"
@@ -94,7 +95,8 @@ The `file_shares` block supports:
 
 * `capacity_gb` -
   (Required)
-  File share capacity in GB.
+  File share capacity in GiB. This must be at least 1024 GiB
+  for the standard tier, or 2560 GiB for the premium tier.
 
 The `networks` block supports:
 
@@ -160,8 +162,13 @@ Instance can be imported using any of these accepted formats:
 ```
 $ terraform import google_filestore_instance.default projects/{{project}}/locations/{{zone}}/instances/{{name}}
 $ terraform import google_filestore_instance.default {{project}}/{{zone}}/{{name}}
+$ terraform import google_filestore_instance.default {{zone}}/{{name}}
 $ terraform import google_filestore_instance.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

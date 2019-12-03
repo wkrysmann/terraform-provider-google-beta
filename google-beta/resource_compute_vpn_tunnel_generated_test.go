@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeVpnTunnel_vpnTunnelBasicExample(t *testing.T) {
@@ -52,62 +52,62 @@ func TestAccComputeVpnTunnel_vpnTunnelBasicExample(t *testing.T) {
 func testAccComputeVpnTunnel_vpnTunnelBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_vpn_tunnel" "tunnel1" {
-  name          = "tunnel1-%{random_suffix}"
+  name          = "tunnel1%{random_suffix}"
   peer_ip       = "15.0.0.120"
   shared_secret = "a secret message"
 
-  target_vpn_gateway = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  target_vpn_gateway = google_compute_vpn_gateway.target_gateway.self_link
 
   depends_on = [
-    "google_compute_forwarding_rule.fr_esp",
-    "google_compute_forwarding_rule.fr_udp500",
-    "google_compute_forwarding_rule.fr_udp4500",
+    google_compute_forwarding_rule.fr_esp,
+    google_compute_forwarding_rule.fr_udp500,
+    google_compute_forwarding_rule.fr_udp4500,
   ]
 }
 
 resource "google_compute_vpn_gateway" "target_gateway" {
-  name    = "vpn1-%{random_suffix}"
-  network = "${google_compute_network.network1.self_link}"
+  name    = "vpn1%{random_suffix}"
+  network = google_compute_network.network1.self_link
 }
 
 resource "google_compute_network" "network1" {
-  name       = "network1-%{random_suffix}"
+  name = "network1%{random_suffix}"
 }
 
 resource "google_compute_address" "vpn_static_ip" {
-  name   = "vpn-static-ip-%{random_suffix}"
+  name = "vpn-static-ip%{random_suffix}"
 }
 
 resource "google_compute_forwarding_rule" "fr_esp" {
-  name        = "fr-esp-%{random_suffix}"
+  name        = "fr-esp%{random_suffix}"
   ip_protocol = "ESP"
-  ip_address  = "${google_compute_address.vpn_static_ip.address}"
-  target      = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  ip_address  = google_compute_address.vpn_static_ip.address
+  target      = google_compute_vpn_gateway.target_gateway.self_link
 }
 
 resource "google_compute_forwarding_rule" "fr_udp500" {
-  name        = "fr-udp500-%{random_suffix}"
+  name        = "fr-udp500%{random_suffix}"
   ip_protocol = "UDP"
   port_range  = "500"
-  ip_address  = "${google_compute_address.vpn_static_ip.address}"
-  target      = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  ip_address  = google_compute_address.vpn_static_ip.address
+  target      = google_compute_vpn_gateway.target_gateway.self_link
 }
 
 resource "google_compute_forwarding_rule" "fr_udp4500" {
-  name        = "fr-udp4500-%{random_suffix}"
+  name        = "fr-udp4500%{random_suffix}"
   ip_protocol = "UDP"
   port_range  = "4500"
-  ip_address  = "${google_compute_address.vpn_static_ip.address}"
-  target      = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  ip_address  = google_compute_address.vpn_static_ip.address
+  target      = google_compute_vpn_gateway.target_gateway.self_link
 }
 
 resource "google_compute_route" "route1" {
-  name       = "route1-%{random_suffix}"
-  network    = "${google_compute_network.network1.name}"
+  name       = "route1%{random_suffix}"
+  network    = google_compute_network.network1.name
   dest_range = "15.0.0.0/24"
   priority   = 1000
 
-  next_hop_vpn_tunnel = "${google_compute_vpn_tunnel.tunnel1.self_link}"
+  next_hop_vpn_tunnel = google_compute_vpn_tunnel.tunnel1.self_link
 }
 `, context)
 }
@@ -134,17 +134,17 @@ func TestAccComputeVpnTunnel_vpnTunnelBetaExample(t *testing.T) {
 func testAccComputeVpnTunnel_vpnTunnelBetaExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_vpn_tunnel" "tunnel1" {
-  provider = "google-beta"
-  name          = "tunnel1-%{random_suffix}"
+  provider      = google-beta
+  name          = "tunnel1%{random_suffix}"
   peer_ip       = "15.0.0.120"
   shared_secret = "a secret message"
 
-  target_vpn_gateway = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  target_vpn_gateway = google_compute_vpn_gateway.target_gateway.self_link
 
   depends_on = [
-    "google_compute_forwarding_rule.fr_esp",
-    "google_compute_forwarding_rule.fr_udp500",
-    "google_compute_forwarding_rule.fr_udp4500",
+    google_compute_forwarding_rule.fr_esp,
+    google_compute_forwarding_rule.fr_udp500,
+    google_compute_forwarding_rule.fr_udp4500,
   ]
 
   labels = {
@@ -153,58 +153,58 @@ resource "google_compute_vpn_tunnel" "tunnel1" {
 }
 
 resource "google_compute_vpn_gateway" "target_gateway" {
-  provider = "google-beta"
-  name    = "vpn1-%{random_suffix}"
-  network = "${google_compute_network.network1.self_link}"
+  provider = google-beta
+  name     = "vpn1%{random_suffix}"
+  network  = google_compute_network.network1.self_link
 }
 
 resource "google_compute_network" "network1" {
-  provider = "google-beta"
-  name       = "network1-%{random_suffix}"
+  provider = google-beta
+  name     = "network1%{random_suffix}"
 }
 
 resource "google_compute_address" "vpn_static_ip" {
-  provider = "google-beta"
-  name   = "vpn-static-ip-%{random_suffix}"
+  provider = google-beta
+  name     = "vpn-static-ip%{random_suffix}"
 }
 
 resource "google_compute_forwarding_rule" "fr_esp" {
-  provider = "google-beta"
-  name        = "fr-esp-%{random_suffix}"
+  provider    = google-beta
+  name        = "fr-esp%{random_suffix}"
   ip_protocol = "ESP"
-  ip_address  = "${google_compute_address.vpn_static_ip.address}"
-  target      = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  ip_address  = google_compute_address.vpn_static_ip.address
+  target      = google_compute_vpn_gateway.target_gateway.self_link
 }
 
 resource "google_compute_forwarding_rule" "fr_udp500" {
-  provider = "google-beta"
-  name        = "fr-udp500-%{random_suffix}"
+  provider    = google-beta
+  name        = "fr-udp500%{random_suffix}"
   ip_protocol = "UDP"
   port_range  = "500"
-  ip_address  = "${google_compute_address.vpn_static_ip.address}"
-  target      = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  ip_address  = google_compute_address.vpn_static_ip.address
+  target      = google_compute_vpn_gateway.target_gateway.self_link
 }
 
 resource "google_compute_forwarding_rule" "fr_udp4500" {
-  provider = "google-beta"
-  name        = "fr-udp4500-%{random_suffix}"
+  provider    = google-beta
+  name        = "fr-udp4500%{random_suffix}"
   ip_protocol = "UDP"
   port_range  = "4500"
-  ip_address  = "${google_compute_address.vpn_static_ip.address}"
-  target      = "${google_compute_vpn_gateway.target_gateway.self_link}"
+  ip_address  = google_compute_address.vpn_static_ip.address
+  target      = google_compute_vpn_gateway.target_gateway.self_link
 }
 
 resource "google_compute_route" "route1" {
-  provider = "google-beta"
-  name       = "route1-%{random_suffix}"
-  network    = "${google_compute_network.network1.name}"
+  provider   = google-beta
+  name       = "route1%{random_suffix}"
+  network    = google_compute_network.network1.name
   dest_range = "15.0.0.0/24"
   priority   = 1000
 
-  next_hop_vpn_tunnel = "${google_compute_vpn_tunnel.tunnel1.self_link}"
+  next_hop_vpn_tunnel = google_compute_vpn_tunnel.tunnel1.self_link
 }
 
-provider "google-beta"{
+provider "google-beta" {
   region = "us-central1"
   zone   = "us-central1-a"
 }
@@ -222,12 +222,12 @@ func testAccCheckComputeVpnTunnelDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/regions/{{region}}/vpnTunnels/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/regions/{{region}}/vpnTunnels/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeVpnTunnel still exists at %s", url)
 		}

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccFirestoreIndex_firestoreIndexBasicExample(t *testing.T) {
@@ -53,7 +53,7 @@ func TestAccFirestoreIndex_firestoreIndexBasicExample(t *testing.T) {
 func testAccFirestoreIndex_firestoreIndexBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_firestore_index" "my-index" {
-  project    = "%{project_id}"
+  project = "%{project_id}"
 
   collection = "chatrooms"
 
@@ -86,12 +86,12 @@ func testAccCheckFirestoreIndexDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://firestore.googleapis.com/v1/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{FirestoreBasePath}}{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("FirestoreIndex still exists at %s", url)
 		}

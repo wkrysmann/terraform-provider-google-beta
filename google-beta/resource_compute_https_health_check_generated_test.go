@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeHttpsHealthCheck_httpsHealthCheckBasicExample(t *testing.T) {
@@ -51,7 +51,7 @@ func TestAccComputeHttpsHealthCheck_httpsHealthCheckBasicExample(t *testing.T) {
 func testAccComputeHttpsHealthCheck_httpsHealthCheckBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_https_health_check" "default" {
-  name         = "authentication-health-check-%{random_suffix}"
+  name         = "authentication-health-check%{random_suffix}"
   request_path = "/health_check"
 
   timeout_sec        = 1
@@ -71,12 +71,12 @@ func testAccCheckComputeHttpsHealthCheckDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/httpsHealthChecks/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/global/httpsHealthChecks/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeHttpsHealthCheck still exists at %s", url)
 		}

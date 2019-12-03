@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeRouter_routerBasicExample(t *testing.T) {
@@ -51,8 +51,8 @@ func TestAccComputeRouter_routerBasicExample(t *testing.T) {
 func testAccComputeRouter_routerBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_router" "foobar" {
-  name    = "my-router-%{random_suffix}"
-  network = "${google_compute_network.foobar.name}"
+  name    = "my-router%{random_suffix}"
+  network = google_compute_network.foobar.name
   bgp {
     asn               = 64514
     advertise_mode    = "CUSTOM"
@@ -67,7 +67,7 @@ resource "google_compute_router" "foobar" {
 }
 
 resource "google_compute_network" "foobar" {
-  name = "my-network-%{random_suffix}"
+  name                    = "my-network%{random_suffix}"
   auto_create_subnetworks = false
 }
 `, context)
@@ -84,12 +84,12 @@ func testAccCheckComputeRouterDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/regions/{{region}}/routers/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/regions/{{region}}/routers/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeRouter still exists at %s", url)
 		}

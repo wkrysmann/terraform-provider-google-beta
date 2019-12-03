@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeRegionAutoscaler_regionAutoscalerBetaExample(t *testing.T) {
@@ -46,11 +46,11 @@ func TestAccComputeRegionAutoscaler_regionAutoscalerBetaExample(t *testing.T) {
 func testAccComputeRegionAutoscaler_regionAutoscalerBetaExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_region_autoscaler" "foobar" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name   = "my-region-autoscaler-%{random_suffix}"
+  name   = "my-region-autoscaler%{random_suffix}"
   region = "us-central1"
-  target = "${google_compute_region_instance_group_manager.foobar.self_link}"
+  target = google_compute_region_instance_group_manager.foobar.self_link
 
   autoscaling_policy {
     max_replicas    = 5
@@ -64,16 +64,16 @@ resource "google_compute_region_autoscaler" "foobar" {
 }
 
 resource "google_compute_instance_template" "foobar" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name           = "my-instance-template-%{random_suffix}"
+  name           = "my-instance-template%{random_suffix}"
   machine_type   = "n1-standard-1"
   can_ip_forward = false
 
   tags = ["foo", "bar"]
 
   disk {
-    source_image = "${data.google_compute_image.debian_9.self_link}"
+    source_image = data.google_compute_image.debian_9.self_link
   }
 
   network_interface {
@@ -90,34 +90,34 @@ resource "google_compute_instance_template" "foobar" {
 }
 
 resource "google_compute_target_pool" "foobar" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name = "my-target-pool-%{random_suffix}"
+  name = "my-target-pool%{random_suffix}"
 }
 
 resource "google_compute_region_instance_group_manager" "foobar" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name   = "my-region-igm-%{random_suffix}"
+  name   = "my-region-igm%{random_suffix}"
   region = "us-central1"
 
   version {
-    instance_template  = "${google_compute_instance_template.foobar.self_link}"
-    name               = "primary"
+    instance_template = google_compute_instance_template.foobar.self_link
+    name              = "primary"
   }
 
-  target_pools       = ["${google_compute_target_pool.foobar.self_link}"]
+  target_pools       = [google_compute_target_pool.foobar.self_link]
   base_instance_name = "foobar"
 }
 
 data "google_compute_image" "debian_9" {
-  provider = "google-beta"
+  provider = google-beta
 
-	family  = "debian-9"
-	project = "debian-cloud"
+  family  = "debian-9"
+  project = "debian-cloud"
 }
 
-provider "google-beta"{
+provider "google-beta" {
   region = "us-central1"
   zone   = "us-central1-a"
 }
@@ -151,9 +151,9 @@ func TestAccComputeRegionAutoscaler_regionAutoscalerBasicExample(t *testing.T) {
 func testAccComputeRegionAutoscaler_regionAutoscalerBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_compute_region_autoscaler" "foobar" {
-  name   = "my-region-autoscaler-%{random_suffix}"
+  name   = "my-region-autoscaler%{random_suffix}"
   region = "us-central1"
-  target = "${google_compute_region_instance_group_manager.foobar.self_link}"
+  target = google_compute_region_instance_group_manager.foobar.self_link
 
   autoscaling_policy {
     max_replicas    = 5
@@ -167,14 +167,14 @@ resource "google_compute_region_autoscaler" "foobar" {
 }
 
 resource "google_compute_instance_template" "foobar" {
-  name           = "my-instance-template-%{random_suffix}"
+  name           = "my-instance-template%{random_suffix}"
   machine_type   = "n1-standard-1"
   can_ip_forward = false
 
   tags = ["foo", "bar"]
 
   disk {
-    source_image = "${data.google_compute_image.debian_9.self_link}"
+    source_image = data.google_compute_image.debian_9.self_link
   }
 
   network_interface {
@@ -191,22 +191,25 @@ resource "google_compute_instance_template" "foobar" {
 }
 
 resource "google_compute_target_pool" "foobar" {
-  name = "my-target-pool-%{random_suffix}"
+  name = "my-target-pool%{random_suffix}"
 }
 
 resource "google_compute_region_instance_group_manager" "foobar" {
-  name   = "my-region-igm-%{random_suffix}"
+  name   = "my-region-igm%{random_suffix}"
   region = "us-central1"
 
-  instance_template  = "${google_compute_instance_template.foobar.self_link}"
+  version {
+    instance_template  = google_compute_instance_template.foobar.self_link
+    name               = "primary"
+  }
 
-  target_pools       = ["${google_compute_target_pool.foobar.self_link}"]
+  target_pools       = [google_compute_target_pool.foobar.self_link]
   base_instance_name = "foobar"
 }
 
 data "google_compute_image" "debian_9" {
-	family  = "debian-9"
-	project = "debian-cloud"
+  family  = "debian-9"
+  project = "debian-cloud"
 }
 `, context)
 }
@@ -222,12 +225,12 @@ func testAccCheckComputeRegionAutoscalerDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/regions/{{region}}/autoscalers/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/regions/{{region}}/autoscalers/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeRegionAutoscaler still exists at %s", url)
 		}

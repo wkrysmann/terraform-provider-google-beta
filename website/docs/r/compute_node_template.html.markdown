@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Compute Engine"
 layout: "google"
 page_title: "Google: google_compute_node_template"
 sidebar_current: "docs-google-compute-node-template"
@@ -23,7 +24,7 @@ description: |-
 
 Represents a NodeTemplate resource. Node templates specify properties
 for creating sole-tenant nodes, such as node type, vCPU and memory
-requirments, node affinity labels, and region.
+requirements, node affinity labels, and region.
 
 
 To get more information about NodeTemplate, see:
@@ -46,9 +47,9 @@ data "google_compute_node_types" "central1a" {
 }
 
 resource "google_compute_node_template" "template" {
-  name = "soletenant-tmpl"
-  region = "us-central1"
-  node_type = "${data.google_compute_node_types.central1a.names[0]}"
+  name      = "soletenant-tmpl"
+  region    = "us-central1"
+  node_type = data.google_compute_node_types.central1a.names[0]
 }
 ```
 <div class = "oics-button" style="float: right; margin: 0 0 -15px">
@@ -66,16 +67,16 @@ provider "google-beta" {
 }
 
 data "google_compute_node_types" "central1a" {
-  provider = "google-beta"
-  zone = "us-central1-a"
+  provider = google-beta
+  zone     = "us-central1-a"
 }
 
 resource "google_compute_node_template" "template" {
-  provider = "google-beta"
+  provider = google-beta
 
-  name = "soletenant-with-licenses"
-  region = "us-central1"
-  node_type = "${data.google_compute_node_types.central1a.names[0]}"
+  name      = "soletenant-with-licenses"
+  region    = "us-central1"
+  node_type = data.google_compute_node_types.central1a.names[0]
 
   node_affinity_labels = {
     foo = "baz"
@@ -122,7 +123,7 @@ The following arguments are supported:
   be specified.  Structure is documented below.
 
 * `server_binding` -
-  (Optional, [Beta](https://terraform.io/docs/providers/google/provider_versions.html))
+  (Optional, [Beta](https://terraform.io/docs/providers/google/guides/provider_versions.html))
   The server binding policy for nodes using this template. Determines
   where the nodes should restart following a maintenance event.  Structure is documented below.
 
@@ -189,8 +190,13 @@ NodeTemplate can be imported using any of these accepted formats:
 ```
 $ terraform import google_compute_node_template.default projects/{{project}}/regions/{{region}}/nodeTemplates/{{name}}
 $ terraform import google_compute_node_template.default {{project}}/{{region}}/{{name}}
+$ terraform import google_compute_node_template.default {{region}}/{{name}}
 $ terraform import google_compute_node_template.default {{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

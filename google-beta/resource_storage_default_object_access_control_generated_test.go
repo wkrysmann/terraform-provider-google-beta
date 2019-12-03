@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccStorageDefaultObjectAccessControl_storageDefaultObjectAccessControlPublicExample(t *testing.T) {
@@ -52,13 +52,13 @@ func TestAccStorageDefaultObjectAccessControl_storageDefaultObjectAccessControlP
 func testAccStorageDefaultObjectAccessControl_storageDefaultObjectAccessControlPublicExample(context map[string]interface{}) string {
 	return Nprintf(`
 resource "google_storage_default_object_access_control" "public_rule" {
-  bucket = "${google_storage_bucket.bucket.name}"
+  bucket = google_storage_bucket.bucket.name
   role   = "READER"
   entity = "allUsers"
 }
 
 resource "google_storage_bucket" "bucket" {
-	name = "static-content-bucket-%{random_suffix}"
+  name = "static-content-bucket%{random_suffix}"
 }
 `, context)
 }
@@ -74,12 +74,12 @@ func testAccCheckStorageDefaultObjectAccessControlDestroy(s *terraform.State) er
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/storage/v1/b/{{bucket}}/defaultObjectAcl/{{entity}}")
+		url, err := replaceVarsForTest(config, rs, "{{StorageBasePath}}b/{{bucket}}/defaultObjectAcl/{{entity}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("StorageDefaultObjectAccessControl still exists at %s", url)
 		}

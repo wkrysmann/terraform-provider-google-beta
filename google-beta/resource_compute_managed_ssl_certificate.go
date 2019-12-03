@@ -21,9 +21,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
-	"google.golang.org/api/compute/v1"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceComputeManagedSslCertificate() *schema.Resource {
@@ -37,20 +36,23 @@ func resourceComputeManagedSslCertificate() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(360 * time.Second),
-			Delete: schema.DefaultTimeout(1800 * time.Second),
+			Create: schema.DefaultTimeout(6 * time.Minute),
+			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
 			"description": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `An optional description of this resource.`,
 			},
 			"managed": {
 				Type:     schema.TypeList,
 				Optional: true,
 				ForceNew: true,
+				Description: `Properties relevant to a managed certificate.  These will be used if the
+certificate is managed (as indicated by a value of 'MANAGED' in 'type').`,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -59,7 +61,9 @@ func resourceComputeManagedSslCertificate() *schema.Resource {
 							Required:         true,
 							ForceNew:         true,
 							DiffSuppressFunc: absoluteDomainSuppress,
-							MaxItems:         1,
+							Description: `Domains for which a managed SSL certificate will be valid.  Currently,
+there can only be one domain in this list.`,
+							MaxItems: 1,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
@@ -71,30 +75,46 @@ func resourceComputeManagedSslCertificate() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
+				Description: `Name of the resource. Provided by the client when the resource is
+created. The name must be 1-63 characters long, and comply with
+RFC1035. Specifically, the name must be 1-63 characters long and match
+the regular expression '[a-z]([-a-z0-9]*[a-z0-9])?' which means the
+first character must be a lowercase letter, and all following
+characters must be a dash, lowercase letter, or digit, except the last
+character, which cannot be a dash.
+
+
+These are in the same namespace as the managed SSL certificates.`,
 			},
 			"type": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ForceNew:     true,
 				ValidateFunc: validation.StringInSlice([]string{"MANAGED", ""}, false),
-				Default:      "MANAGED",
+				Description: `Enum field whose value is always 'MANAGED' - used to signal to the API
+which type this is.`,
+				Default: "MANAGED",
 			},
 			"certificate_id": {
-				Type:     schema.TypeInt,
-				Computed: true,
-				Optional: true,
+				Type:        schema.TypeInt,
+				Computed:    true,
+				Optional:    true,
+				Description: `The unique identifier for the resource.`,
 			},
 			"creation_timestamp": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `Creation timestamp in RFC3339 text format.`,
 			},
 			"expire_time": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `Expire time of the certificate.`,
 			},
 			"subject_alternative_names": {
-				Type:     schema.TypeList,
-				Computed: true,
+				Type:        schema.TypeList,
+				Computed:    true,
+				Description: `Domains associated with the certificate via Subject Alternative Name.`,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -142,42 +162,36 @@ func resourceComputeManagedSslCertificateCreate(d *schema.ResourceData, meta int
 		obj["type"] = typeProp
 	}
 
-	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/sslCertificates")
+	url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/sslCertificates")
 	if err != nil {
 		return err
 	}
 
 	log.Printf("[DEBUG] Creating new ManagedSslCertificate: %#v", obj)
-	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating ManagedSslCertificate: %s", err)
 	}
 
 	// Store the ID now
-	id, err := replaceVars(d, config, "{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/global/sslCertificates/{{name}}")
 	if err != nil {
 		return fmt.Errorf("Error constructing id: %s", err)
 	}
 	d.SetId(id)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-	op := &compute.Operation{}
-	err = Convert(res, op)
-	if err != nil {
-		return err
-	}
-
-	waitErr := computeOperationWaitTime(
-		config.clientCompute, op, project, "Creating ManagedSslCertificate",
+	err = computeOperationWaitTime(
+		config, res, project, "Creating ManagedSslCertificate",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if waitErr != nil {
+	if err != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create ManagedSslCertificate: %s", waitErr)
+		return fmt.Errorf("Error waiting to create ManagedSslCertificate: %s", err)
 	}
 
 	log.Printf("[DEBUG] Finished creating ManagedSslCertificate %q: %#v", d.Id(), res)
@@ -188,20 +202,20 @@ func resourceComputeManagedSslCertificateCreate(d *schema.ResourceData, meta int
 func resourceComputeManagedSslCertificateRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/sslCertificates/{{name}}")
+	url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/sslCertificates/{{name}}")
 	if err != nil {
 		return err
-	}
-
-	res, err := sendRequest(config, "GET", url, nil)
-	if err != nil {
-		return handleNotFoundError(err, d, fmt.Sprintf("ComputeManagedSslCertificate %q", d.Id()))
 	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
+	res, err := sendRequest(config, "GET", project, url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("ComputeManagedSslCertificate %q", d.Id()))
+	}
+
 	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading ManagedSslCertificate: %s", err)
 	}
@@ -212,7 +226,7 @@ func resourceComputeManagedSslCertificateRead(d *schema.ResourceData, meta inter
 	if err := d.Set("description", flattenComputeManagedSslCertificateDescription(res["description"], d)); err != nil {
 		return fmt.Errorf("Error reading ManagedSslCertificate: %s", err)
 	}
-	if err := d.Set("certificate_id", flattenComputeManagedSslCertificateCertificate_id(res["id"], d)); err != nil {
+	if err := d.Set("certificate_id", flattenComputeManagedSslCertificateCertificateId(res["id"], d)); err != nil {
 		return fmt.Errorf("Error reading ManagedSslCertificate: %s", err)
 	}
 	if err := d.Set("name", flattenComputeManagedSslCertificateName(res["name"], d)); err != nil {
@@ -240,30 +254,26 @@ func resourceComputeManagedSslCertificateRead(d *schema.ResourceData, meta inter
 func resourceComputeManagedSslCertificateDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/beta/projects/{{project}}/global/sslCertificates/{{name}}")
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{ComputeBasePath}}projects/{{project}}/global/sslCertificates/{{name}}")
 	if err != nil {
 		return err
 	}
 
 	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting ManagedSslCertificate %q", d.Id())
-	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
+
+	res, err := sendRequestWithTimeout(config, "DELETE", project, url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "ManagedSslCertificate")
 	}
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-	op := &compute.Operation{}
-	err = Convert(res, op)
-	if err != nil {
-		return err
-	}
-
 	err = computeOperationWaitTime(
-		config.clientCompute, op, project, "Deleting ManagedSslCertificate",
+		config, res, project, "Deleting ManagedSslCertificate",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {
@@ -276,12 +286,16 @@ func resourceComputeManagedSslCertificateDelete(d *schema.ResourceData, meta int
 
 func resourceComputeManagedSslCertificateImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*Config)
-	if err := parseImportId([]string{"projects/(?P<project>[^/]+)/global/sslCertificates/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+	if err := parseImportId([]string{
+		"projects/(?P<project>[^/]+)/global/sslCertificates/(?P<name>[^/]+)",
+		"(?P<project>[^/]+)/(?P<name>[^/]+)",
+		"(?P<name>[^/]+)",
+	}, d, config); err != nil {
 		return nil, err
 	}
 
 	// Replace import id for the resource id
-	id, err := replaceVars(d, config, "{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/global/sslCertificates/{{name}}")
 	if err != nil {
 		return nil, fmt.Errorf("Error constructing id: %s", err)
 	}
@@ -298,7 +312,7 @@ func flattenComputeManagedSslCertificateDescription(v interface{}, d *schema.Res
 	return v
 }
 
-func flattenComputeManagedSslCertificateCertificate_id(v interface{}, d *schema.ResourceData) interface{} {
+func flattenComputeManagedSslCertificateCertificateId(v interface{}, d *schema.ResourceData) interface{} {
 	// Handles the string fixed64 format
 	if strVal, ok := v.(string); ok {
 		if intVal, err := strconv.ParseInt(strVal, 10, 64); err == nil {

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceFirestoreIndex() *schema.Resource {
@@ -36,20 +36,27 @@ func resourceFirestoreIndex() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(600 * time.Second),
-			Delete: schema.DefaultTimeout(600 * time.Second),
+			Create: schema.DefaultTimeout(10 * time.Minute),
+			Delete: schema.DefaultTimeout(10 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
 			"collection": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: `The collection being indexed.`,
 			},
 			"fields": {
 				Type:     schema.TypeList,
 				Required: true,
 				ForceNew: true,
+				Description: `The fields supported by this index. The last field entry is always for
+the field path '__name__'. If, on creation, '__name__' was not
+specified as the last field, it will be added automatically with the
+same direction as that of the last field defined. If the final field
+in a composite index is not directional, the '__name__' will be
+ordered '"ASCENDING"' (unless explicitly specified otherwise).`,
 				MinItems: 2,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -58,37 +65,47 @@ func resourceFirestoreIndex() *schema.Resource {
 							Optional:     true,
 							ForceNew:     true,
 							ValidateFunc: validation.StringInSlice([]string{"CONTAINS", ""}, false),
+							Description: `Indicates that this field supports operations on arrayValues. Only one of 'order' and 'arrayConfig' can
+be specified.`,
 						},
 						"field_path": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ForceNew: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: `Name of the field.`,
 						},
 						"order": {
 							Type:         schema.TypeString,
 							Optional:     true,
 							ForceNew:     true,
 							ValidateFunc: validation.StringInSlice([]string{"ASCENDING", "DESCENDING", ""}, false),
+							Description: `Indicates that this field supports ordering by the specified order or comparing using =, <, <=, >, >=.
+Only one of 'order' and 'arrayConfig' can be specified.`,
 						},
 					},
 				},
 			},
 			"database": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				Default:  "(default)",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `The Firestore database id. Defaults to '"(default)"'.`,
+				Default:     "(default)",
 			},
 			"query_scope": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"COLLECTION", ""}, false),
-				Default:      "COLLECTION",
+				ValidateFunc: validation.StringInSlice([]string{"COLLECTION", "COLLECTION_GROUP", ""}, false),
+				Description: `The scope at which a query is run. One of '"COLLECTION"' or
+'"COLLECTION_GROUP"'. Defaults to '"COLLECTION"'.`,
+				Default: "COLLECTION",
 			},
 			"name": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Description: `A server defined name for this index. Format:
+'projects/{{project}}/databases/{{database}}/collectionGroups/{{collection}}/indexes/{{server_generated_id}}'`,
 			},
 			"project": {
 				Type:     schema.TypeString,
@@ -134,13 +151,17 @@ func resourceFirestoreIndexCreate(d *schema.ResourceData, meta interface{}) erro
 		return err
 	}
 
-	url, err := replaceVars(d, config, "https://firestore.googleapis.com/v1/projects/{{project}}/databases/{{database}}/collectionGroups/{{collection}}/indexes")
+	url, err := replaceVars(d, config, "{{FirestoreBasePath}}projects/{{project}}/databases/{{database}}/collectionGroups/{{collection}}/indexes")
 	if err != nil {
 		return err
 	}
 
 	log.Printf("[DEBUG] Creating new Index: %#v", obj)
-	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating Index: %s", err)
 	}
@@ -152,18 +173,14 @@ func resourceFirestoreIndexCreate(d *schema.ResourceData, meta interface{}) erro
 	}
 	d.SetId(id)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-	waitErr := firestoreOperationWaitTime(
+	err = firestoreOperationWaitTime(
 		config, res, project, "Creating Index",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if waitErr != nil {
+	if err != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create Index: %s", waitErr)
+		return fmt.Errorf("Error waiting to create Index: %s", err)
 	}
 
 	log.Printf("[DEBUG] Finished creating Index %q: %#v", d.Id(), res)
@@ -182,20 +199,20 @@ func resourceFirestoreIndexCreate(d *schema.ResourceData, meta interface{}) erro
 func resourceFirestoreIndexRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://firestore.googleapis.com/v1/{{name}}")
+	url, err := replaceVars(d, config, "{{FirestoreBasePath}}{{name}}")
 	if err != nil {
 		return err
-	}
-
-	res, err := sendRequest(config, "GET", url, nil)
-	if err != nil {
-		return handleNotFoundError(err, d, fmt.Sprintf("FirestoreIndex %q", d.Id()))
 	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
+	res, err := sendRequest(config, "GET", project, url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("FirestoreIndex %q", d.Id()))
+	}
+
 	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading Index: %s", err)
 	}
@@ -216,21 +233,22 @@ func resourceFirestoreIndexRead(d *schema.ResourceData, meta interface{}) error 
 func resourceFirestoreIndexDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://firestore.googleapis.com/v1/{{name}}")
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{FirestoreBasePath}}{{name}}")
 	if err != nil {
 		return err
 	}
 
 	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting Index %q", d.Id())
-	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
+
+	res, err := sendRequestWithTimeout(config, "DELETE", project, url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "Index")
-	}
-
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
 	}
 
 	err = firestoreOperationWaitTime(
@@ -263,7 +281,7 @@ func resourceFirestoreIndexImport(d *schema.ResourceData, meta interface{}) ([]*
 		)
 	}
 
-	d.Set("project", fmt.Sprintf("%s", stringParts[1]))
+	d.Set("project", stringParts[1])
 	return []*schema.ResourceData{d}, nil
 }
 

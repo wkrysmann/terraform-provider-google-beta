@@ -12,6 +12,7 @@
 #     .github/CONTRIBUTING.md.
 #
 # ----------------------------------------------------------------------------
+subcategory: "Stackdriver Monitoring"
 layout: "google"
 page_title: "Google: google_monitoring_alert_policy"
 sidebar_current: "docs-google-monitoring-alert-policy"
@@ -34,26 +35,21 @@ To get more information about AlertPolicy, see:
 * How-to Guides
     * [Official Documentation](https://cloud.google.com/monitoring/alerts/)
 
-<div class = "oics-button" style="float: right; margin: 0 0 -15px">
-  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=monitoring_alert_policy_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
-    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
-  </a>
-</div>
 ## Example Usage - Monitoring Alert Policy Basic
 
 
 ```hcl
 resource "google_monitoring_alert_policy" "alert_policy" {
   display_name = "My Alert Policy"
-  combiner = "OR"
+  combiner     = "OR"
   conditions {
     display_name = "test condition"
     condition_threshold {
-      filter = "metric.type=\"compute.googleapis.com/instance/disk/write_bytes_count\" AND resource.type=\"gce_instance\""
-      duration = "60s"
+      filter     = "metric.type=\"compute.googleapis.com/instance/disk/write_bytes_count\" AND resource.type=\"gce_instance\""
+      duration   = "60s"
       comparison = "COMPARISON_GT"
       aggregations {
-        alignment_period = "60s"
+        alignment_period   = "60s"
         per_series_aligner = "ALIGN_RATE"
       }
     }
@@ -129,7 +125,7 @@ The `condition_absent` block supports:
   (such as when aggregating multiple streams
   on each resource to a single stream for each
   resource or when aggregating streams across
-  all members of a group of resrouces).
+  all members of a group of resources).
   Multiple aggregations are applied in the
   order specified.  Structure is documented below.
 
@@ -359,7 +355,7 @@ The `condition_threshold` block supports:
   (such as when aggregating multiple streams
   on each resource to a single stream for each
   resource or when aggregating streams across
-  all members of a group of resrouces).
+  all members of a group of resources).
   Multiple aggregations are applied in the
   order specified.This field is similar to the
   one in the MetricService.ListTimeSeries
@@ -663,3 +659,7 @@ $ terraform import google_monitoring_alert_policy.default {{name}}
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
 as an argument so that Terraform uses the correct provider to import your resource.
+
+## User Project Overrides
+
+This resource supports [User Project Overrides](https://www.terraform.io/docs/providers/google/guides/provider_reference.html#user_project_override).

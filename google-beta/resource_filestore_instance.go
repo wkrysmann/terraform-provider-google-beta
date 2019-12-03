@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceFilestoreInstance() *schema.Resource {
@@ -38,38 +38,46 @@ func resourceFilestoreInstance() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(360 * time.Second),
-			Update: schema.DefaultTimeout(360 * time.Second),
-			Delete: schema.DefaultTimeout(360 * time.Second),
+			Create: schema.DefaultTimeout(6 * time.Minute),
+			Update: schema.DefaultTimeout(6 * time.Minute),
+			Delete: schema.DefaultTimeout(6 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
 			"file_shares": {
 				Type:     schema.TypeList,
 				Required: true,
+				Description: `File system shares on the instance. For this version, only a
+single file share is supported.`,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"capacity_gb": {
 							Type:     schema.TypeInt,
 							Required: true,
+							Description: `File share capacity in GiB. This must be at least 1024 GiB
+for the standard tier, or 2560 GiB for the premium tier.`,
 						},
 						"name": {
-							Type:     schema.TypeString,
-							Required: true,
-							ForceNew: true,
+							Type:        schema.TypeString,
+							Required:    true,
+							ForceNew:    true,
+							Description: `The name of the fileshare (16 characters or less)`,
 						},
 					},
 				},
 			},
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: `The resource name of the instance.`,
 			},
 			"networks": {
 				Type:     schema.TypeList,
 				Required: true,
 				ForceNew: true,
+				Description: `VPC networks to which the instance is connected. For this version,
+only a single network is supported.`,
 				MinItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -77,6 +85,8 @@ func resourceFilestoreInstance() *schema.Resource {
 							Type:     schema.TypeList,
 							Required: true,
 							ForceNew: true,
+							Description: `IP versions for which the instance has
+IP addresses assigned.`,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
@@ -85,15 +95,20 @@ func resourceFilestoreInstance() *schema.Resource {
 							Type:     schema.TypeString,
 							Required: true,
 							ForceNew: true,
+							Description: `The name of the GCE VPC network to which the
+instance is connected.`,
 						},
 						"reserved_ip_range": {
 							Type:     schema.TypeString,
 							Computed: true,
 							Optional: true,
+							Description: `A /29 CIDR block that identifies the range of IP
+addresses reserved for this instance.`,
 						},
 						"ip_addresses": {
-							Type:     schema.TypeList,
-							Computed: true,
+							Type:        schema.TypeList,
+							Computed:    true,
+							Description: `A list of IPv4 or IPv6 addresses.`,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
@@ -106,28 +121,35 @@ func resourceFilestoreInstance() *schema.Resource {
 				Required:     true,
 				ForceNew:     true,
 				ValidateFunc: validation.StringInSlice([]string{"TIER_UNSPECIFIED", "STANDARD", "PREMIUM"}, false),
+				Description:  `The service tier of the instance.`,
 			},
 			"zone": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: `The name of the Filestore zone of the instance.`,
 			},
 			"description": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: `A description of the instance.`,
 			},
 			"labels": {
-				Type:     schema.TypeMap,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Description: `Resource labels to represent user-provided metadata.`,
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"create_time": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `Creation timestamp in RFC3339 text format.`,
 			},
 			"etag": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Description: `Server-specified ETag for the instance resource to prevent
+simultaneous updates from overwriting each other.`,
 			},
 			"project": {
 				Type:     schema.TypeString,
@@ -174,36 +196,36 @@ func resourceFilestoreInstanceCreate(d *schema.ResourceData, meta interface{}) e
 		obj["networks"] = networksProp
 	}
 
-	url, err := replaceVars(d, config, "https://file.googleapis.com/v1/projects/{{project}}/locations/{{zone}}/instances?instanceId={{name}}")
+	url, err := replaceVars(d, config, "{{FilestoreBasePath}}projects/{{project}}/locations/{{zone}}/instances?instanceId={{name}}")
 	if err != nil {
 		return err
 	}
 
 	log.Printf("[DEBUG] Creating new Instance: %#v", obj)
-	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	res, err := sendRequestWithTimeout(config, "POST", project, url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating Instance: %s", err)
 	}
 
 	// Store the ID now
-	id, err := replaceVars(d, config, "{{project}}/{{zone}}/{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/locations/{{zone}}/instances/{{name}}")
 	if err != nil {
 		return fmt.Errorf("Error constructing id: %s", err)
 	}
 	d.SetId(id)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-	waitErr := filestoreOperationWaitTime(
+	err = filestoreOperationWaitTime(
 		config, res, project, "Creating Instance",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if waitErr != nil {
+	if err != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create Instance: %s", waitErr)
+		return fmt.Errorf("Error waiting to create Instance: %s", err)
 	}
 
 	log.Printf("[DEBUG] Finished creating Instance %q: %#v", d.Id(), res)
@@ -214,20 +236,20 @@ func resourceFilestoreInstanceCreate(d *schema.ResourceData, meta interface{}) e
 func resourceFilestoreInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://file.googleapis.com/v1/projects/{{project}}/locations/{{zone}}/instances/{{name}}")
+	url, err := replaceVars(d, config, "{{FilestoreBasePath}}projects/{{project}}/locations/{{zone}}/instances/{{name}}")
 	if err != nil {
 		return err
-	}
-
-	res, err := sendRequest(config, "GET", url, nil)
-	if err != nil {
-		return handleNotFoundError(err, d, fmt.Sprintf("FilestoreInstance %q", d.Id()))
 	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
+	res, err := sendRequest(config, "GET", project, url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("FilestoreInstance %q", d.Id()))
+	}
+
 	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading Instance: %s", err)
 	}
@@ -260,6 +282,11 @@ func resourceFilestoreInstanceRead(d *schema.ResourceData, meta interface{}) err
 func resourceFilestoreInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
 	obj := make(map[string]interface{})
 	descriptionProp, err := expandFilestoreInstanceDescription(d.Get("description"), d, config)
 	if err != nil {
@@ -280,7 +307,7 @@ func resourceFilestoreInstanceUpdate(d *schema.ResourceData, meta interface{}) e
 		obj["fileShares"] = fileSharesProp
 	}
 
-	url, err := replaceVars(d, config, "https://file.googleapis.com/v1/projects/{{project}}/locations/{{zone}}/instances/{{name}}")
+	url, err := replaceVars(d, config, "{{FilestoreBasePath}}projects/{{project}}/locations/{{zone}}/instances/{{name}}")
 	if err != nil {
 		return err
 	}
@@ -305,15 +332,10 @@ func resourceFilestoreInstanceUpdate(d *schema.ResourceData, meta interface{}) e
 	if err != nil {
 		return err
 	}
-	res, err := sendRequestWithTimeout(config, "PATCH", url, obj, d.Timeout(schema.TimeoutUpdate))
+	res, err := sendRequestWithTimeout(config, "PATCH", project, url, obj, d.Timeout(schema.TimeoutUpdate))
 
 	if err != nil {
 		return fmt.Errorf("Error updating Instance %q: %s", d.Id(), err)
-	}
-
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
 	}
 
 	err = filestoreOperationWaitTime(
@@ -330,21 +352,22 @@ func resourceFilestoreInstanceUpdate(d *schema.ResourceData, meta interface{}) e
 func resourceFilestoreInstanceDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	url, err := replaceVars(d, config, "https://file.googleapis.com/v1/projects/{{project}}/locations/{{zone}}/instances/{{name}}")
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	url, err := replaceVars(d, config, "{{FilestoreBasePath}}projects/{{project}}/locations/{{zone}}/instances/{{name}}")
 	if err != nil {
 		return err
 	}
 
 	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting Instance %q", d.Id())
-	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
+
+	res, err := sendRequestWithTimeout(config, "DELETE", project, url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "Instance")
-	}
-
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
 	}
 
 	err = filestoreOperationWaitTime(
@@ -361,12 +384,17 @@ func resourceFilestoreInstanceDelete(d *schema.ResourceData, meta interface{}) e
 
 func resourceFilestoreInstanceImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*Config)
-	if err := parseImportId([]string{"projects/(?P<project>[^/]+)/locations/(?P<zone>[^/]+)/instances/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+	if err := parseImportId([]string{
+		"projects/(?P<project>[^/]+)/locations/(?P<zone>[^/]+)/instances/(?P<name>[^/]+)",
+		"(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)",
+		"(?P<zone>[^/]+)/(?P<name>[^/]+)",
+		"(?P<name>[^/]+)",
+	}, d, config); err != nil {
 		return nil, err
 	}
 
 	// Replace import id for the resource id
-	id, err := replaceVars(d, config, "{{project}}/{{zone}}/{{name}}")
+	id, err := replaceVars(d, config, "projects/{{project}}/locations/{{zone}}/instances/{{name}}")
 	if err != nil {
 		return nil, fmt.Errorf("Error constructing id: %s", err)
 	}

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/acctest"
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccComputeNodeGroup_nodeGroupBasicExample(t *testing.T) {
@@ -55,18 +55,18 @@ data "google_compute_node_types" "central1a" {
 }
 
 resource "google_compute_node_template" "soletenant-tmpl" {
-  name = "soletenant-tmpl-%{random_suffix}"
-  region = "us-central1"
-  node_type = "${data.google_compute_node_types.central1a.names[0]}"
+  name      = "soletenant-tmpl%{random_suffix}"
+  region    = "us-central1"
+  node_type = data.google_compute_node_types.central1a.names[0]
 }
 
 resource "google_compute_node_group" "nodes" {
-  name = "soletenant-group-%{random_suffix}"
-  zone = "us-central1-a"
+  name        = "soletenant-group%{random_suffix}"
+  zone        = "us-central1-a"
   description = "example google_compute_node_group for Terraform Google Provider"
 
-  size = 1
-  node_template = "${google_compute_node_template.soletenant-tmpl.self_link}"
+  size          = 1
+  node_template = google_compute_node_template.soletenant-tmpl.self_link
 }
 `, context)
 }
@@ -82,12 +82,12 @@ func testAccCheckComputeNodeGroupDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(rs, "https://www.googleapis.com/compute/beta/projects/{{project}}/zones/{{zone}}/nodeGroups/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{ComputeBasePath}}projects/{{project}}/zones/{{zone}}/nodeGroups/{{name}}")
 		if err != nil {
 			return err
 		}
 
-		_, err = sendRequest(config, "GET", url, nil)
+		_, err = sendRequest(config, "GET", "", url, nil)
 		if err == nil {
 			return fmt.Errorf("ComputeNodeGroup still exists at %s", url)
 		}
